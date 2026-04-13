@@ -1,0 +1,129 @@
+# =============================================================================
+# Terraform
+# =============================================================================
+
+# Local .terraform directory (downloaded providers + modules)
+.terraform/
+.terraform.lock.hcl
+
+# Terraform plan output files (may contain sensitive data)
+*.tfplan
+tfplan*
+tfplan-*
+
+# Terraform state files — state is stored in S3 (never commit to git)
+*.tfstate
+*.tfstate.*
+*.tfstate.backup
+
+# Crash log
+crash.log
+crash.*.log
+
+# Override files (local developer overrides — not team-wide)
+override.tf
+override.tf.json
+*_override.tf
+*_override.tf.json
+
+# Terraform variable files that may contain secrets
+# (keep environments/*.tfvars in git; exclude any local-only var files)
+*.auto.tfvars
+*.auto.tfvars.json
+secrets.tfvars
+secrets.*.tfvars
+
+# Terraform CLI config (contains credentials)
+.terraformrc
+terraform.rc
+
+# =============================================================================
+# macOS
+# =============================================================================
+
+.DS_Store
+.AppleDouble
+.LSOverride
+._*
+.Spotlight-V100
+.Trashes
+.VolumeIcon.icns
+.com.apple.timemachine.donotpresent
+
+# =============================================================================
+# Linux
+# =============================================================================
+
+*~
+.nfs*
+
+# =============================================================================
+# Windows
+# =============================================================================
+
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+$RECYCLE.BIN/
+
+# =============================================================================
+# IDE and editors
+# =============================================================================
+
+# VS Code
+.vscode/
+*.code-workspace
+
+# JetBrains (IntelliJ, GoLand, etc.)
+.idea/
+*.iml
+*.iws
+
+# Vim / Neovim
+*.swp
+*.swo
+*.swn
+[._]*.s[a-v][a-z]
+[._]*.sw[a-p]
+
+# Emacs
+*~
+\#*\#
+.#*
+
+# Sublime Text
+*.sublime-workspace
+*.sublime-project
+
+# =============================================================================
+# AWS credentials / sensitive files
+# =============================================================================
+
+# Never commit credentials or keys
+*.pem
+*.key
+*.p12
+*.pfx
+id_rsa
+id_ed25519
+credentials
+
+# AWS assume-role cache files
+.aws/
+
+# =============================================================================
+# Logs and temp files
+# =============================================================================
+
+*.log
+*.tmp
+*.temp
+*.bak
+*.orig
+
+# =============================================================================
+# Scripts output
+# =============================================================================
+
+# Bootstrap script output / debug logs
+bootstrap-output.txt
