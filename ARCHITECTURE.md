@@ -63,48 +63,48 @@ codebase** with a single variable-file change.
 graph TB
     Internet((Internet))
 
-    subgraph AWS["AWS — us-west-1"]
-        subgraph Edge["Edge / Security Layer"]
-            WAF["AWS WAFv2\n(OWASP Rules + Rate Limit)"]
-            ALB["Application Load Balancer\n(HTTPS, idle_timeout=120s)"]
+    subgraph AWS["AWS - us-west-1"]
+        subgraph Edge["Edge and Security Layer"]
+            WAF["AWS WAFv2<br/>OWASP Rules + Rate Limit"]
+            ALB["Application Load Balancer<br/>HTTPS, idle timeout 120s"]
         end
 
-        subgraph VPC["VPC — 10.0.0.0/16"]
-            subgraph Public["Public Subnets (us-west-1a / 1c)"]
+        subgraph VPC["VPC - 10.0.0.0/16"]
+            subgraph Public["Public Subnets us-west-1a and 1c"]
                 NAT1["NAT GW AZ-A"]
                 NAT2["NAT GW AZ-C"]
             end
 
-            subgraph App["Private App Subnets — /20 prod (4,091 IPs/AZ)"]
-                EKS["EKS Fargate\nServerless Kubernetes\n(API pods · Debezium · Consumers)"]
-                MSK["MSK Serverless\nApache Kafka\n(SASL/IAM — port 9098)"]
+            subgraph App["Private App Subnets - /20 prod, 4091 IPs per AZ"]
+                EKS["EKS Fargate<br/>Serverless Kubernetes<br/>API pods, Debezium, Consumers"]
+                MSK["MSK Serverless<br/>Apache Kafka<br/>SASL/IAM port 9098"]
             end
 
-            subgraph DB["Private DB Subnets — /22 prod (1,022 IPs/AZ)"]
-                Aurora["Aurora PostgreSQL\nServerless v2\n0.5 to 128 ACU\nWriter + 2 Readers"]
-                CDC["Aurora PostgreSQL\nServerless v2 CDC\n0.5 to 64 ACU\nDebezium Source"]
-                Redis["ElastiCache\nServerless Redis 7\n1 TB / 5M ECPU/s"]
+            subgraph DB["Private DB Subnets - /22 prod, 1022 IPs per AZ"]
+                Aurora["Aurora PostgreSQL<br/>Serverless v2<br/>0.5 to 128 ACU<br/>Writer + 2 Readers"]
+                CDC["Aurora PostgreSQL<br/>Serverless v2 CDC<br/>0.5 to 64 ACU<br/>Debezium Source"]
+                Redis["ElastiCache<br/>Serverless Redis 7<br/>1 TB / 5M ECPU per second"]
             end
 
-            subgraph Endpoints["VPC Endpoints (private — no NAT)"]
+            subgraph Endpoints["VPC Endpoints - private, no NAT"]
                 EP_S3["S3 Gateway"]
-                EP_ECR["ECR API/DKR"]
+                EP_ECR["ECR API and DKR"]
                 EP_LOGS["CloudWatch Logs"]
                 EP_SM["Secrets Manager"]
             end
         end
 
         subgraph Supporting["Supporting AWS Services"]
-            SM["Secrets Manager\n(DB credentials, auto-rotated)"]
-            KMS["KMS CMKs\n(encryption at rest)"]
-            CW["CloudWatch\n(metrics, logs, alarms)"]
+            SM["Secrets Manager<br/>DB credentials, auto-rotated"]
+            KMS["KMS CMKs<br/>encryption at rest"]
+            CW["CloudWatch<br/>metrics, logs, alarms"]
         end
     end
 
     Internet -->|HTTPS| WAF
     WAF -->|Filtered| ALB
     ALB -->|Forward to pod| EKS
-    EKS -->|Write / Read| Aurora
+    EKS -->|Write and Read| Aurora
     EKS -->|Produce events| MSK
     EKS -->|Cache lookup| Redis
     MSK -->|Consume events| EKS
@@ -113,8 +113,11 @@ graph TB
     EKS -->|Image pull| EP_ECR
     EKS -->|Log writes| EP_LOGS
     EKS -->|S3 access| EP_S3
-    Aurora & CDC & Redis -->|Encrypted by| KMS
-    Aurora & CDC & Redis -->|Creds stored in| SM
+    Aurora -->|Encrypted by| KMS
+    CDC -->|Encrypted by| KMS
+    Redis -->|Encrypted by| KMS
+    Aurora -->|Creds stored in| SM
+    CDC -->|Creds stored in| SM
 ```
 
 ---
@@ -125,31 +128,33 @@ graph TB
 
 ```mermaid
 graph TB
-    subgraph VPC["VPC: 10.0.0.0/16  — 65,534 usable IPs"]
+    subgraph VPC["VPC: 10.0.0.0/16 - 65534 usable IPs"]
 
         subgraph AZ_A["Availability Zone: us-west-1a"]
-            PUB_A["Public Subnet\n10.0.1.0/24 (251 IPs)\nHolds: ALB ENI, NAT Gateway"]
-            APP_A["Private App Subnet\nPOC:  10.0.10.0/24  (251 IPs)\nDev:  10.0.10.0/23  (510 IPs)\nUAT:  10.0.8.0/21  (2046 IPs)\nProd: 10.0.16.0/20 (4091 IPs)\nHolds: EKS Fargate pods, MSK ENIs"]
-            DB_A["Private DB Subnet\nPOC:  10.0.20.0/24  (251 IPs)\nProd: 10.0.48.0/22 (1022 IPs)\nHolds: Aurora, Redis ENIs"]
+            PUB_A["Public Subnet<br/>10.0.1.0/24 - 251 IPs<br/>ALB ENI + NAT Gateway"]
+            APP_A["Private App Subnet<br/>POC: 10.0.10.0/24 - 251 IPs<br/>Dev: 10.0.10.0/23 - 510 IPs<br/>UAT: 10.0.8.0/21 - 2046 IPs<br/>Prod: 10.0.16.0/20 - 4091 IPs<br/>EKS Fargate pods + MSK ENIs"]
+            DB_A["Private DB Subnet<br/>POC: 10.0.20.0/24 - 251 IPs<br/>Prod: 10.0.48.0/22 - 1022 IPs<br/>Aurora + Redis ENIs"]
         end
 
         subgraph AZ_C["Availability Zone: us-west-1c"]
-            PUB_C["Public Subnet\n10.0.2.0/24 (251 IPs)\nHolds: ALB ENI, NAT Gateway"]
-            APP_C["Private App Subnet\nPOC:  10.0.11.0/24  (251 IPs)\nDev:  10.0.12.0/23  (510 IPs)\nUAT:  10.0.16.0/21 (2046 IPs)\nProd: 10.0.32.0/20 (4091 IPs)\nHolds: EKS Fargate pods, MSK ENIs"]
-            DB_C["Private DB Subnet\nPOC:  10.0.21.0/24  (251 IPs)\nProd: 10.0.52.0/22 (1022 IPs)\nHolds: Aurora, Redis ENIs"]
+            PUB_C["Public Subnet<br/>10.0.2.0/24 - 251 IPs<br/>ALB ENI + NAT Gateway"]
+            APP_C["Private App Subnet<br/>POC: 10.0.11.0/24 - 251 IPs<br/>Dev: 10.0.12.0/23 - 510 IPs<br/>UAT: 10.0.16.0/21 - 2046 IPs<br/>Prod: 10.0.32.0/20 - 4091 IPs<br/>EKS Fargate pods + MSK ENIs"]
+            DB_C["Private DB Subnet<br/>POC: 10.0.21.0/24 - 251 IPs<br/>Prod: 10.0.52.0/22 - 1022 IPs<br/>Aurora + Redis ENIs"]
         end
 
         IGW["Internet Gateway"]
-        RT_PUB["Public Route Table\n0.0.0.0/0 to IGW"]
-        RT_APP_A["App Route Table AZ-A\n0.0.0.0/0 to NAT-A"]
-        RT_APP_C["App Route Table AZ-C\n0.0.0.0/0 to NAT-C"]
-        RT_DB["DB Route Table\n(no internet route — isolated)"]
+        NAT_A["NAT Gateway AZ-A"]
+        NAT_C["NAT Gateway AZ-C"]
+        RT_DB["DB Route Table<br/>no internet route - isolated"]
     end
 
-    Internet((Internet)) --> IGW --> PUB_A & PUB_C
-    PUB_A --> RT_APP_A --> APP_A
-    PUB_C --> RT_APP_C --> APP_C
-    DB_A & DB_C --> RT_DB
+    Internet((Internet)) --> IGW
+    IGW --> PUB_A
+    IGW --> PUB_C
+    PUB_A --> NAT_A --> APP_A
+    PUB_C --> NAT_C --> APP_C
+    DB_A --> RT_DB
+    DB_C --> RT_DB
 ```
 
 ### 3.2 Traffic paths through the network
@@ -373,11 +378,11 @@ sequenceDiagram
 
 ```mermaid
 graph TD
-    L1["Layer 1 — Network Edge\nWAFv2 (OWASP rules, SQLi, rate limit)\nALB (drop invalid headers, desync strictest)"]
-    L2["Layer 2 — Network Isolation\nVPC with private subnets only for workloads\nSecurity Groups (least-privilege CIDR rules)\nDB subnets have zero internet route"]
-    L3["Layer 3 — Identity & Access\nIRSA — per-pod IAM roles (least privilege)\nSASL/IAM for Kafka (no passwords)\nNo long-lived access keys in pods"]
-    L4["Layer 4 — Data Protection\nKMS CMK per service (auto-rotation)\nTLS in transit for all connections\nSecrets Manager (no plaintext credentials)"]
-    L5["Layer 5 — Detection & Audit\nVPC Flow Logs → CloudWatch\nAurora pgaudit (DDL + DML logging)\nEKS control plane audit logs\nWAF sampled requests + CloudWatch Metrics"]
+    L1["Layer 1 - Network Edge<br/>WAFv2: OWASP rules, SQLi, rate limit<br/>ALB: drop invalid headers, strictest desync mode"]
+    L2["Layer 2 - Network Isolation<br/>VPC with private subnets for all workloads<br/>Security Groups with least-privilege CIDR rules<br/>DB subnets have no internet route"]
+    L3["Layer 3 - Identity and Access<br/>IRSA: per-pod IAM roles, least privilege<br/>SASL/IAM for Kafka, no passwords<br/>No long-lived access keys in pods"]
+    L4["Layer 4 - Data Protection<br/>KMS CMK per service with auto-rotation<br/>TLS in transit for all connections<br/>Secrets Manager: no plaintext credentials"]
+    L5["Layer 5 - Detection and Audit<br/>VPC Flow Logs to CloudWatch<br/>Aurora pgaudit: DDL and DML logging<br/>EKS control plane audit logs<br/>WAF sampled requests and CloudWatch metrics"]
 
     L1 --> L2 --> L3 --> L4 --> L5
 ```
@@ -516,14 +521,14 @@ No source code changes. No risk of forgetting to update a hardcoded value.
 
 ```mermaid
 graph LR
-    POC["POC\n~$400/month\nArchitecture validation\nGet manager sign-off\n1 Aurora instance\n4 ACU max"]
-    DEV["Dev\n~$700/month\nFeature development\nIntegration tests\n1 Aurora instance\n8 ACU max"]
-    UAT["UAT\n~$1,400/month\nLoad testing\nSecurity testing\nUser acceptance\n2 Aurora instances\n32 ACU max"]
-    PROD["Prod\n~$10K/month\n1M RPS target\nFull HA / WAF on\n3 Aurora instances\n128 ACU max"]
+    POC["POC<br/>~400 USD/month<br/>Architecture validation<br/>Manager sign-off<br/>1 Aurora instance, 4 ACU max"]
+    DEV["Dev<br/>~700 USD/month<br/>Feature development<br/>Integration tests<br/>1 Aurora instance, 8 ACU max"]
+    UAT["UAT<br/>~1400 USD/month<br/>Load testing<br/>Security testing<br/>2 Aurora instances, 32 ACU max"]
+    PROD["Prod<br/>~10K USD/month<br/>1M RPS target<br/>Full HA, WAF on<br/>3 Aurora instances, 128 ACU max"]
 
-    POC -->|"Architecture approved"| DEV
-    DEV -->|"Feature complete + integrated"| UAT
-    UAT -->|"Performance + UAT sign-off"| PROD
+    POC -->|Architecture approved| DEV
+    DEV -->|Feature complete| UAT
+    UAT -->|UAT sign-off| PROD
 ```
 
 ### Environment comparison
