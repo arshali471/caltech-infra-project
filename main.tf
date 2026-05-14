@@ -1,9 +1,68 @@
 ###############################################################################
 # Root main.tf — Orchestrates all modules
+# Architecture: Option 2 (POC) — EC2-based, us-west-2
+#
+# Data flow:
+#   Caltech 8K transactions
+#     → EC2 Transaction Simulator
+#     → Aurora PostgreSQL (source DB)
+#     → EC2 Debezium CDC
+#     → MSK Kafka
+#     → EC2 Redis Sink      → ElastiCache Redis
+#     → EC2 PostgreSQL Sink → RDS PostgreSQL (sink DB)
+#     → EC2 Librechat (public-facing UI)
 ###############################################################################
 
 locals {
   name = "${var.project}-${var.environment}"
+
+  # MSK IAM policy shared by Debezium, Redis Sink, and PostgreSQL Sink
+  msk_producer_consumer_policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Sid    = "MSKClusterConnect"
+        Effect = "Allow"
+        Action = [
+          "kafka-cluster:Connect",
+          "kafka-cluster:AlterCluster",
+          "kafka-cluster:DescribeCluster",
+        ]
+        Resource = module.msk.cluster_arn
+      },
+      {
+        Sid    = "MSKTopics"
+        Effect = "Allow"
+        Action = [
+          "kafka-cluster:CreateTopic",
+          "kafka-cluster:DescribeTopic",
+          "kafka-cluster:AlterTopic",
+          "kafka-cluster:DeleteTopic",
+          "kafka-cluster:WriteData",
+          "kafka-cluster:ReadData",
+          "kafka-cluster:DescribeTopicDynamicConfiguration",
+          "kafka-cluster:AlterTopicDynamicConfiguration",
+        ]
+        Resource = "arn:aws:kafka:${var.aws_region}:${data.aws_caller_identity.current.account_id}:topic/${local.name}-kafka/*/*"
+      },
+      {
+        Sid    = "MSKGroups"
+        Effect = "Allow"
+        Action = [
+          "kafka-cluster:AlterGroup",
+          "kafka-cluster:DescribeGroup",
+          "kafka-cluster:DeleteGroup",
+        ]
+        Resource = "arn:aws:kafka:${var.aws_region}:${data.aws_caller_identity.current.account_id}:group/${local.name}-kafka/*/*"
+      },
+      {
+        Sid      = "MSKDescribe"
+        Effect   = "Allow"
+        Action   = ["kafka:DescribeClusterV2", "kafka:GetBootstrapBrokers"]
+        Resource = "*"
+      }
+    ]
+  })
 }
 
 # ============================================================================
@@ -29,49 +88,7 @@ module "vpc" {
 }
 
 # ============================================================================
-# Application Load Balancer (Public Subnet)
-# ============================================================================
-
-module "alb" {
-  source = "./modules/alb"
-
-  name                = local.name
-  environment         = var.environment
-  vpc_id              = module.vpc.vpc_id
-  public_subnet_ids   = module.vpc.public_subnet_ids
-  security_group_id   = module.vpc.alb_security_group_id
-  deletion_protection = var.alb_deletion_protection
-  ssl_certificate_arn = var.alb_ssl_certificate_arn
-  idle_timeout        = var.alb_idle_timeout
-  enable_waf          = var.alb_enable_waf
-  tags                = var.tags
-}
-
-# ============================================================================
-# EKS Cluster (App Subnet)
-# ============================================================================
-
-module "eks" {
-  source = "./modules/eks"
-
-  cluster_name                         = "${local.name}-eks"
-  cluster_version                      = var.eks_cluster_version
-  vpc_id                               = module.vpc.vpc_id
-  subnet_ids                           = module.vpc.private_app_subnet_ids
-  cluster_security_group_id            = module.vpc.eks_cluster_security_group_id
-  node_security_group_id               = module.vpc.eks_pods_security_group_id
-  fargate_profiles                     = var.eks_fargate_profiles
-  enable_cluster_log_types             = var.eks_cluster_log_types
-  cluster_endpoint_private_access      = var.eks_endpoint_private_access
-  cluster_endpoint_public_access       = var.eks_endpoint_public_access
-  cluster_endpoint_public_access_cidrs = var.eks_public_access_cidrs
-  enable_irsa                          = var.eks_enable_irsa
-  environment                          = var.environment
-  tags                                 = var.tags
-}
-
-# ============================================================================
-# MSK — Managed Kafka (App Subnet)
+# MSK Serverless — Kafka (App Subnet)
 # ============================================================================
 
 module "msk" {
@@ -85,7 +102,7 @@ module "msk" {
 }
 
 # ============================================================================
-# Aurora PostgreSQL (DB Subnet)
+# Aurora PostgreSQL — Source / Primary DB (DB Subnet)
 # ============================================================================
 
 module "aurora" {
@@ -112,7 +129,7 @@ module "aurora" {
 }
 
 # ============================================================================
-# RDS PostgreSQL — Debezium CDC source (DB Subnet)
+# RDS PostgreSQL — Debezium CDC Source + Sink DB (DB Subnet)
 # ============================================================================
 
 module "rds" {
@@ -138,7 +155,7 @@ module "rds" {
 }
 
 # ============================================================================
-# ElastiCache Redis (DB Subnet)
+# ElastiCache Serverless Redis (DB Subnet)
 # ============================================================================
 
 module "elasticache" {
@@ -154,4 +171,106 @@ module "elasticache" {
   subnet_ids           = module.vpc.private_db_subnet_ids
   security_group_ids   = [module.vpc.elasticache_security_group_id]
   tags                 = var.tags
+}
+
+# ============================================================================
+# EC2 — Transaction Simulator
+# Simulates Caltech 8K transactions → writes to Aurora PostgreSQL
+# ============================================================================
+
+module "ec2_transaction_sim" {
+  source = "./modules/ec2"
+
+  name          = "${local.name}-transaction-sim"
+  role          = "transaction-simulator"
+  vpc_id        = module.vpc.vpc_id
+  subnet_id     = module.vpc.private_app_subnet_ids[0]
+  instance_type = var.ec2_instance_types["transaction_sim"]
+  tags          = var.tags
+}
+
+# ============================================================================
+# EC2 — Debezium CDC
+# Reads Aurora CDC WAL → publishes change events to MSK Kafka (SASL/IAM)
+# ============================================================================
+
+module "ec2_debezium" {
+  source = "./modules/ec2"
+
+  name          = "${local.name}-debezium"
+  role          = "debezium-cdc"
+  vpc_id        = module.vpc.vpc_id
+  subnet_id     = module.vpc.private_app_subnet_ids[0]
+  instance_type = var.ec2_instance_types["debezium"]
+  inline_policy = local.msk_producer_consumer_policy
+  tags          = var.tags
+}
+
+# ============================================================================
+# EC2 — Redis Sink Consumer
+# Reads from MSK Kafka → writes to ElastiCache Redis
+# ============================================================================
+
+module "ec2_redis_sink" {
+  source = "./modules/ec2"
+
+  name          = "${local.name}-redis-sink"
+  role          = "redis-sink-consumer"
+  vpc_id        = module.vpc.vpc_id
+  subnet_id     = module.vpc.private_app_subnet_ids[0]
+  instance_type = var.ec2_instance_types["redis_sink"]
+  inline_policy = local.msk_producer_consumer_policy
+  tags          = var.tags
+}
+
+# ============================================================================
+# EC2 — PostgreSQL Sink Consumer
+# Reads from MSK Kafka → writes to RDS PostgreSQL sink DB
+# ============================================================================
+
+module "ec2_postgres_sink" {
+  source = "./modules/ec2"
+
+  name          = "${local.name}-postgres-sink"
+  role          = "postgres-sink-consumer"
+  vpc_id        = module.vpc.vpc_id
+  subnet_id     = module.vpc.private_app_subnet_ids[0]
+  instance_type = var.ec2_instance_types["postgres_sink"]
+  inline_policy = local.msk_producer_consumer_policy
+  tags          = var.tags
+}
+
+# ============================================================================
+# EC2 — Librechat (public-facing UI)
+# Reads from Redis + RDS → serves the Librechat web interface to end users
+# ============================================================================
+
+module "ec2_librechat" {
+  source = "./modules/ec2"
+
+  name                = "${local.name}-librechat"
+  role                = "librechat"
+  vpc_id              = module.vpc.vpc_id
+  subnet_id           = module.vpc.public_subnet_ids[0]
+  instance_type       = var.ec2_instance_types["librechat"]
+  associate_public_ip = true
+
+  ingress_rules = [
+    {
+      description = "Librechat UI (HTTP)"
+      from_port   = 3000
+      to_port     = 3000
+      protocol    = "tcp"
+      cidr_blocks = ["0.0.0.0/0"]
+    },
+    {
+      description = "HTTPS"
+      from_port   = 443
+      to_port     = 443
+      protocol    = "tcp"
+      cidr_blocks = ["0.0.0.0/0"]
+    }
+  ]
+
+  tags = var.tags
 }
