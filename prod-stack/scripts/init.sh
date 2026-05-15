@@ -5,6 +5,9 @@
 # Creates the S3 state bucket + DynamoDB lock table, then runs
 # terraform init and terraform validate automatically.
 #
+# Compatible with: macOS, Linux, Windows Git Bash (MINGW64), WSL
+# No Python required — uses AWS CLI --query for all JSON parsing.
+#
 # AWS credential resolution order (first match wins):
 #   1. --profile <name>  flag passed to this script
 #   2. AWS_PROFILE       environment variable
@@ -15,7 +18,7 @@
 #
 # Usage:
 #   chmod +x scripts/init.sh
-#   ./scripts/init.sh                          # auto-detect credentials
+#   ./scripts/init.sh                            # auto-detect credentials
 #   ./scripts/init.sh --profile caltect-account
 #   AWS_PROFILE=staging ./scripts/init.sh
 ###############################################################################
@@ -51,14 +54,11 @@ while [[ $# -gt 0 ]]; do
 done
 
 # ── Resolve AWS profile / credentials ────────────────────────────────────────
-# Priority: --profile flag > AWS_PROFILE env > AWS_DEFAULT_PROFILE env >
-#           AWS_ACCESS_KEY_ID env vars > ~/.aws default > instance metadata
 resolve_aws_identity() {
   if [[ -n "${PROFILE_FLAG}" ]]; then
     export AWS_PROFILE="${PROFILE_FLAG}"
     CRED_SOURCE="--profile ${PROFILE_FLAG}"
   elif [[ -n "${AWS_PROFILE:-}" ]]; then
-    export AWS_PROFILE="${AWS_PROFILE}"
     CRED_SOURCE="AWS_PROFILE=${AWS_PROFILE}"
   elif [[ -n "${AWS_DEFAULT_PROFILE:-}" ]]; then
     export AWS_PROFILE="${AWS_DEFAULT_PROFILE}"
@@ -82,7 +82,7 @@ BACKEND_HCL="${ROOT_DIR}/backend.hcl"
 [[ -f "${BACKEND_HCL}" ]] || error "backend.hcl not found at ${BACKEND_HCL}"
 
 # ── Read backend.hcl values ───────────────────────────────────────────────────
-# awk-based parser — works on macOS (BSD) and Linux (GNU) without \s issues
+# awk-based parser — works on macOS (BSD), Linux (GNU), and Windows Git Bash
 parse_hcl() { awk -F'"' "/^[[:space:]]*$1[[:space:]]*=/ { print \$2; exit }" "${BACKEND_HCL}"; }
 
 STATE_BUCKET=$(parse_hcl "bucket")
@@ -109,15 +109,13 @@ info "Region       : ${STATE_REGION}"
 # ── Prerequisite checks ───────────────────────────────────────────────────────
 step "Checking prerequisites"
 
-command -v terraform &>/dev/null \
+command -v terraform >/dev/null 2>&1 \
   || error "terraform not installed — https://developer.hashicorp.com/terraform/downloads"
-command -v aws &>/dev/null \
+command -v aws >/dev/null 2>&1 \
   || error "aws CLI not installed — https://aws.amazon.com/cli/"
 
-TF_VERSION=$(terraform version -json 2>/dev/null \
-  | python3 -c "import sys,json; print(json.load(sys.stdin)['terraform_version'])" 2>/dev/null \
-  || terraform version | head -1 | grep -oE '[0-9]+\.[0-9]+\.[0-9]+')
-
+# No python3 needed — parse Terraform version directly from text output
+TF_VERSION=$(terraform version | head -1 | grep -oE '[0-9]+\.[0-9]+\.[0-9]+' | head -1)
 AWS_CLI_VERSION=$(aws --version 2>&1 | grep -oE '[0-9]+\.[0-9]+\.[0-9]+' | head -1)
 
 info "Terraform : v${TF_VERSION}"
@@ -126,7 +124,10 @@ info "AWS CLI   : v${AWS_CLI_VERSION}"
 # ── Verify AWS credentials ────────────────────────────────────────────────────
 step "Verifying AWS credentials (${CRED_SOURCE})"
 
-CALLER=$(aws sts get-caller-identity --output json 2>/dev/null) || {
+# Use --query to extract fields directly — no Python or jq needed
+CALLER_INFO=$(aws sts get-caller-identity \
+  --query '[Account,Arn]' \
+  --output text 2>/dev/null) || {
   echo ""
   echo -e "${RED}[ERROR]${NC} AWS authentication failed."
   echo ""
@@ -144,8 +145,9 @@ CALLER=$(aws sts get-caller-identity --output json 2>/dev/null) || {
   exit 1
 }
 
-ACCOUNT_ID=$(echo "${CALLER}" | python3 -c "import sys,json; print(json.load(sys.stdin)['Account'])")
-CALLER_ARN=$(echo "${CALLER}" | python3 -c "import sys,json; print(json.load(sys.stdin)['Arn'])")
+# CALLER_INFO is tab-separated: Account<TAB>Arn
+ACCOUNT_ID=$(echo "${CALLER_INFO}" | awk '{print $1}')
+CALLER_ARN=$(echo "${CALLER_INFO}" | awk '{print $2}')
 
 success "Authenticated as : ${CALLER_ARN}"
 success "Account ID       : ${ACCOUNT_ID}"
@@ -165,12 +167,12 @@ handle_create_result() {
     echo ""
     echo -e "${RED}[ERROR]${NC} Bucket name '${STATE_BUCKET}' is already taken by a different AWS account."
     echo ""
-    echo "  S3 bucket names are globally unique. You must choose a unique name."
-    echo "  Suggested fix — add your account ID to the name:"
+    echo "  S3 bucket names are globally unique. Choose a unique name."
+    echo "  Suggested fix — add your account ID:"
     echo ""
     echo "    bucket = \"caltech-terraform-state-${ACCOUNT_ID}\""
     echo ""
-    echo "  Update backend.hcl with the new name, then re-run this script."
+    echo "  Update backend.hcl and re-run this script."
     echo ""
     exit 1
   else
@@ -181,9 +183,8 @@ handle_create_result() {
 if [[ ${BUCKET_EXIT} -eq 0 ]]; then
   warn "Bucket '${STATE_BUCKET}' already exists in your account — skipping creation"
 else
-  # 403 = bucket exists but owned by a different account (head-bucket may also
-  # return 404 for cross-account buckets when the owner has Block Public Access
-  # enabled — the create step will then surface BucketAlreadyExists instead)
+  # 403 = bucket owned by another account (may also appear as 404 when owner
+  # has Block Public Access enabled — create step surfaces BucketAlreadyExists)
   if echo "${BUCKET_CHECK}" | grep -q "403\|Forbidden"; then
     echo ""
     echo -e "${RED}[ERROR]${NC} Bucket '${STATE_BUCKET}' exists but belongs to another AWS account."
@@ -196,7 +197,6 @@ else
     exit 1
   fi
 
-  # Attempt creation
   if [[ "${STATE_REGION}" == "us-east-1" ]]; then
     CREATE_OUT=$(aws s3api create-bucket \
       --bucket "${STATE_BUCKET}" \
@@ -278,7 +278,7 @@ info "Enabling Point-in-Time Recovery..."
 aws dynamodb update-continuous-backups \
   --table-name "${LOCK_TABLE}" \
   --point-in-time-recovery-specification PointInTimeRecoveryEnabled=true \
-  --region "${STATE_REGION}" &>/dev/null \
+  --region "${STATE_REGION}" >/dev/null 2>&1 \
   && success "PITR enabled" \
   || warn "PITR not enabled (may need extra DynamoDB permissions — non-critical)"
 
@@ -309,18 +309,29 @@ echo -e "  Account ID  : ${CYAN}${ACCOUNT_ID}${NC}"
 echo -e "  State file  : ${CYAN}s3://${STATE_BUCKET}/${STATE_KEY}${NC}"
 echo -e "  Lock table  : ${CYAN}${LOCK_TABLE} (${STATE_REGION})${NC}"
 echo ""
-echo -e "${BOLD}Next — deploy one module at a time:${NC}"
+echo -e "${BOLD}Next — deploy left to right (matches the architecture diagram):${NC}"
 echo ""
+echo -e "  ${CYAN}# Phase 1 — Foundation${NC}"
 echo -e "  ${YELLOW}terraform apply -target=module.kms${NC}"
 echo -e "  ${YELLOW}terraform apply -target=module.security_groups${NC}"
 echo -e "  ${YELLOW}terraform apply -target=module.s3${NC}"
 echo -e "  ${YELLOW}terraform apply -target=module.secrets${NC}"
-echo -e "  ${YELLOW}terraform apply -target=module.msk${NC}"
 echo -e "  ${YELLOW}terraform apply -target=module.iam${NC}"
-echo -e "  ${YELLOW}terraform apply -target=module.aurora_source${NC}"
-echo -e "  ${YELLOW}terraform apply -target=module.aurora_sink${NC}"
-echo -e "  ${YELLOW}terraform apply -target=module.elasticache${NC}"
+echo ""
+echo -e "  ${CYAN}# Phase 2 — App Server (leftmost in diagram)${NC}"
 echo -e "  ${YELLOW}terraform apply -target=module.ec2${NC}"
+echo ""
+echo -e "  ${CYAN}# Phase 3 — Source DB${NC}"
+echo -e "  ${YELLOW}terraform apply -target=module.aurora_source${NC}"
+echo ""
+echo -e "  ${CYAN}# Phase 4 — CDC Pipeline (upload Debezium ZIP to S3 first)${NC}"
+echo -e "  ${YELLOW}terraform apply -target=module.msk${NC}"
 echo -e "  ${YELLOW}terraform apply -target=module.msk_connect${NC}"
-echo -e "  ${YELLOW}terraform apply${NC}   # final pass"
+echo ""
+echo -e "  ${CYAN}# Phase 5 — Consumer Targets${NC}"
+echo -e "  ${YELLOW}terraform apply -target=module.elasticache${NC}"
+echo -e "  ${YELLOW}terraform apply -target=module.aurora_sink${NC}"
+echo ""
+echo -e "  ${CYAN}# Phase 6 — Final pass (tightens IAM to real MSK ARN)${NC}"
+echo -e "  ${YELLOW}terraform apply${NC}"
 echo ""
