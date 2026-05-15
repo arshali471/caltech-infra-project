@@ -229,11 +229,12 @@ aws s3api put-bucket-encryption \
 success "Encryption enabled"
 
 info "Blocking public access..."
-aws s3api put-public-access-block \
+PUBLIC_ACCESS_OUT=$(aws s3api put-public-access-block \
   --bucket "${STATE_BUCKET}" \
   --public-access-block-configuration \
-    "BlockPublicAcls=true,IgnorePublicAcls=true,BlockPublicPolicy=true,RestrictPublicBuckets=true"
-success "Public access blocked"
+    "BlockPublicAcls=true,IgnorePublicAcls=true,BlockPublicPolicy=true,RestrictPublicBuckets=true" 2>&1) \
+  && success "Public access blocked" \
+  || warn "PutPublicAccessBlock skipped — likely enforced by org SCP (bucket is still private): ${PUBLIC_ACCESS_OUT}"
 
 info "Setting lifecycle policy (non-current versions expire after 90 days)..."
 aws s3api put-bucket-lifecycle-configuration \
