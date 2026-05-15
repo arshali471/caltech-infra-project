@@ -3,4 +3,4 @@ key            = "caltech/prod/terraform.tfstate"
 region         = "us-west-2"
 encrypt        = true
 dynamodb_table = "caltech-terraform-lock"
-profile        = "caltect-account"
+profile        = "default"

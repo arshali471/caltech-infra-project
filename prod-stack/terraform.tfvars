@@ -21,6 +21,8 @@ redis_port    = 6379
 
 # ---- EC2 -------------------------------------------------------------------
 ec2_ami_id           = "ami-XXXXXXXXXXXXXXXXX"
+ec2_key_pair_name    = "caltech-keypair"
+ssh_allowed_cidr     = ["0.0.0.0/0"]
 ec2_instance_type    = "t3.large"
 ec2_root_volume_gb   = 50
 ec2_volume_type      = "gp3"

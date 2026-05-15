@@ -52,6 +52,11 @@ variable "imds_http_put_response_hop_limit" {
   default = 1
 }
 
+variable "key_pair_name" {
+  description = "Name of the existing EC2 key pair for SSH access"
+  type        = string
+}
+
 variable "java_package" {
   type    = string
   default = "java-17-amazon-corretto"

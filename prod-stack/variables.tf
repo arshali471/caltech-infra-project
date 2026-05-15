@@ -90,6 +90,17 @@ variable "ec2_ami_id" {
   type        = string
 }
 
+variable "ec2_key_pair_name" {
+  description = "Name of an existing EC2 key pair for SSH access to the app server"
+  type        = string
+}
+
+variable "ssh_allowed_cidr" {
+  description = "CIDRs allowed to SSH into the EC2 instance (restrict to your office/VPN IPs in production)"
+  type        = list(string)
+  default     = ["0.0.0.0/0"]
+}
+
 variable "java_package" {
   description = "Java package name to install (e.g. java-17-amazon-corretto, java-21-amazon-corretto)"
   type        = string

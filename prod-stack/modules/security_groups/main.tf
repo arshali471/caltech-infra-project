@@ -6,8 +6,16 @@
 
 resource "aws_security_group" "ec2" {
   name        = "${var.name}-ec2-sg"
-  description = "EC2 app server - outbound only, inbound access via SSM"
+  description = "EC2 app server - SSH inbound, all outbound"
   vpc_id      = var.vpc_id
+
+  ingress {
+    description = "SSH"
+    from_port   = 22
+    to_port     = 22
+    protocol    = "tcp"
+    cidr_blocks = var.ssh_allowed_cidr
+  }
 
   egress {
     description = "All outbound"

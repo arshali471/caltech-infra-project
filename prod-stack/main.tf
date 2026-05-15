@@ -64,13 +64,14 @@ module "kms" {
 ###############################################################################
 
 module "security_groups" {
-  source        = "./modules/security_groups"
-  name          = local.name
-  vpc_id        = var.vpc_id
-  msk_port      = var.msk_port
-  postgres_port = var.postgres_port
-  redis_port    = var.redis_port
-  tags          = var.tags
+  source           = "./modules/security_groups"
+  name             = local.name
+  vpc_id           = var.vpc_id
+  msk_port         = var.msk_port
+  postgres_port    = var.postgres_port
+  redis_port       = var.redis_port
+  ssh_allowed_cidr = var.ssh_allowed_cidr
+  tags             = var.tags
 }
 
 ###############################################################################
@@ -235,6 +236,7 @@ module "ec2" {
   ami_id                = var.ec2_ami_id
   instance_type         = var.ec2_instance_type
   subnet_id             = var.public_subnet_ids[0]
+  key_pair_name         = var.ec2_key_pair_name
   security_group_id     = module.security_groups.ec2_sg_id
   instance_profile_name = module.iam.ec2_instance_profile_name
   root_volume_gb        = var.ec2_root_volume_gb

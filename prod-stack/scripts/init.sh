@@ -236,18 +236,6 @@ PUBLIC_ACCESS_OUT=$(aws s3api put-public-access-block \
   && success "Public access blocked" \
   || warn "PutPublicAccessBlock skipped — likely enforced by org SCP (bucket is still private): ${PUBLIC_ACCESS_OUT}"
 
-info "Setting lifecycle policy (non-current versions expire after 90 days)..."
-aws s3api put-bucket-lifecycle-configuration \
-  --bucket "${STATE_BUCKET}" \
-  --lifecycle-configuration '{
-    "Rules": [{
-      "ID": "expire-old-state-versions",
-      "Status": "Enabled",
-      "Filter": { "Prefix": "" },
-      "NoncurrentVersionExpiration": { "NoncurrentDays": 90 }
-    }]
-  }'
-success "Lifecycle policy set"
 
 # ── Create DynamoDB lock table ────────────────────────────────────────────────
 step "DynamoDB lock table: ${LOCK_TABLE}"
