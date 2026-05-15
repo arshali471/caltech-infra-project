@@ -4,7 +4,7 @@
 # Update vpc_id / subnet_ids before running terraform apply.
 ###############################################################################
 
-aws_profile = "caltect-account"
+aws_profile = "default"
 aws_region  = "us-west-2"
 environment = "prod"
 project     = "caltech"

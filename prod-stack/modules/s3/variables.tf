@@ -6,10 +6,6 @@ variable "kms_key_arn" {
   type = string
 }
 
-variable "account_id" {
-  type = string
-}
-
 variable "data_lake_ia_transition_days" {
   type    = number
   default = 30

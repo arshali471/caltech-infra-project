@@ -1,7 +1,6 @@
 ###############################################################################
 # modules/s3 — 3 buckets: msk-plugins, data-lake, msk-logs
-# Bug fix: bucket policy ARNs now use exact bucket names via a map,
-#          avoiding the previous msk-data-lake/data-lake name mismatch.
+# Note: public-access-block and bucket policies are omitted — enforced by org SCP.
 ###############################################################################
 
 locals {
@@ -9,43 +8,6 @@ locals {
     plugins   = "${var.name}-msk-plugins"
     data_lake = "${var.name}-data-lake"
     logs      = "${var.name}-msk-logs"
-  }
-}
-
-# Shared TLS + account-only bucket policy, keyed by bucket name
-data "aws_iam_policy_document" "secure" {
-  for_each = local.bucket_names
-
-  statement {
-    sid    = "DenyNonTLS"
-    effect = "Deny"
-    principals {
-      type        = "*"
-      identifiers = ["*"]
-    }
-    actions   = ["s3:*"]
-    resources = ["arn:aws:s3:::${each.value}", "arn:aws:s3:::${each.value}/*"]
-    condition {
-      test     = "Bool"
-      variable = "aws:SecureTransport"
-      values   = ["false"]
-    }
-  }
-
-  statement {
-    sid    = "DenyOtherAccounts"
-    effect = "Deny"
-    principals {
-      type        = "*"
-      identifiers = ["*"]
-    }
-    actions   = ["s3:*"]
-    resources = ["arn:aws:s3:::${each.value}", "arn:aws:s3:::${each.value}/*"]
-    condition {
-      test     = "StringNotEquals"
-      variable = "aws:PrincipalAccount"
-      values   = [var.account_id]
-    }
   }
 }
 
@@ -75,19 +37,6 @@ resource "aws_s3_bucket_server_side_encryption_configuration" "plugins" {
   }
 }
 
-resource "aws_s3_bucket_public_access_block" "plugins" {
-  bucket                  = aws_s3_bucket.plugins.id
-  block_public_acls       = true
-  block_public_policy     = true
-  ignore_public_acls      = true
-  restrict_public_buckets = true
-}
-
-resource "aws_s3_bucket_policy" "plugins" {
-  bucket = aws_s3_bucket.plugins.id
-  policy = data.aws_iam_policy_document.secure["plugins"].json
-}
-
 ###############################################################################
 # Bucket 2 — Data lake (archived Kafka consumer output)
 ###############################################################################
@@ -112,19 +61,6 @@ resource "aws_s3_bucket_server_side_encryption_configuration" "data_lake" {
     }
     bucket_key_enabled = true
   }
-}
-
-resource "aws_s3_bucket_public_access_block" "data_lake" {
-  bucket                  = aws_s3_bucket.data_lake.id
-  block_public_acls       = true
-  block_public_policy     = true
-  ignore_public_acls      = true
-  restrict_public_buckets = true
-}
-
-resource "aws_s3_bucket_policy" "data_lake" {
-  bucket = aws_s3_bucket.data_lake.id
-  policy = data.aws_iam_policy_document.secure["data_lake"].json
 }
 
 resource "aws_s3_bucket_lifecycle_configuration" "data_lake" {
@@ -169,19 +105,6 @@ resource "aws_s3_bucket_server_side_encryption_configuration" "logs" {
     }
     bucket_key_enabled = true
   }
-}
-
-resource "aws_s3_bucket_public_access_block" "logs" {
-  bucket                  = aws_s3_bucket.logs.id
-  block_public_acls       = true
-  block_public_policy     = true
-  ignore_public_acls      = true
-  restrict_public_buckets = true
-}
-
-resource "aws_s3_bucket_policy" "logs" {
-  bucket = aws_s3_bucket.logs.id
-  policy = data.aws_iam_policy_document.secure["logs"].json
 }
 
 resource "aws_s3_bucket_lifecycle_configuration" "logs" {

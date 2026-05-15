@@ -82,7 +82,6 @@ module "s3" {
   source      = "./modules/s3"
   name        = local.name
   kms_key_arn = module.kms.s3_key_arn
-  account_id  = data.aws_caller_identity.current.account_id
 
   data_lake_ia_transition_days      = var.data_lake_ia_transition_days
   data_lake_glacier_transition_days = var.data_lake_glacier_transition_days
