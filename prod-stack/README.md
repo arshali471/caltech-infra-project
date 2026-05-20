@@ -1,64 +1,86 @@
-# Caltech Production Stack — Terraform Deployment Guide
+# Caltech POC Stack — Terraform Deployment Guide
 
-**Region:** us-west-2 | **Account:** caltect-account | **Stack:** `caltech-prod`
+**Region:** us-west-2 | **Account:** 342448511503 | **Profile:** `default` | **Stack:** `caltech-poc`
 
 ---
 
 ## Architecture Overview
 
 ```
-┌──────────────────────────────────────────────────────────────────────────────────────────────────────┐
-│                                     AWS us-west-2  ·  Existing VPC                                   │
-│                                                                                                      │
-│  ┌───────────────────┐   ┌───────────────────┐   ┌───────────────────┐   ┌───────────────────────┐  │
-│  │   PUBLIC SUBNET   │   │                   │   │                   │   │                       │  │
-│  │                   │   │  PRIVATE SUBNET   │   │  PRIVATE SUBNET   │   │   PRIVATE SUBNET      │  │
-│  │  ┌─────────────┐  │   │                   │   │                   │   │                       │  │
-│  │  │  Amazon EC2 │──┼──▶│ RDS Aurora        │──▶│ MSK Connect       │──▶│ Consumer Apps         │  │
-│  │  │             │  │   │ PostgreSQL DB     │   │ (Debezium / CDC)  │   │ Redis Sink            │──▶  ElastiCache Redis
-│  │  │ Transaction │  │   │ (Source)          │   │                   │   │                       │  │
-│  │  │ Simulator   │  │   │                   │   │         │         │   ├───────────────────────┤  │
-│  │  └─────────────┘  │   │                   │   │         ▼         │   │                       │  │
-│  │                   │   │                   │   │   MSK Serverless  │   │ Consumer Apps         │──▶  RDS Aurora
-│  │                   │   │                   │   │   (Kafka)         │──▶│ PostgreSQL Sink       │     PostgreSQL DB
-│  └───────────────────┘   └───────────────────┘   └───────────────────┘   └───────────────────────┘     (Sink)
-└──────────────────────────────────────────────────────────────────────────────────────────────────────┘
+┌────────────────────────────────────────────────────────────────────────────────────────────────────────┐
+│                              AWS us-west-2  ·  VPC vpc-0ed44b92f11b73815                               │
+│                                                                                                        │
+│  ┌─────────────────────┐   ┌───────────────────┐   ┌───────────────────┐   ┌───────────────────────┐  │
+│  │   PUBLIC SUBNET     │   │                   │   │                   │   │                       │  │
+│  │                     │   │  PRIVATE SUBNET   │   │  PRIVATE SUBNET   │   │   PRIVATE SUBNET      │  │
+│  │  ┌───────────────┐  │   │                   │   │                   │   │                       │  │
+│  │  │  Amazon EC2   │──┼──▶│ Aurora PostgreSQL │──▶│ MSK Connect       │──▶│ Redis Sink            │──▶ ElastiCache
+│  │  │  t3.xlarge    │  │   │ Source DB (17.7)  │   │ (Debezium / CDC)  │   │                       │  │
+│  │  │  no public IP │  │   │                   │   │         ▼         │   ├───────────────────────┤  │
+│  │  │  jump server  │  │   │                   │   │ MSK Provisioned   │   │                       │  │
+│  │  │  SSH access   │  │   │                   │   │ Kafka 3.9.0       │──▶│ PostgreSQL Sink        │──▶ Aurora Sink
+│  │  └───────────────┘  │   │                   │   │ kafka.m5.2xlarge  │   │                       │  │
+│  │  VPC Endpoints      │   │                   │   │ 2 Brokers         │   │                       │  │
+│  │  (SSM/SSMMsg/EC2Msg)│   │                   │   │ SASL/SCRAM + IAM  │   │                       │  │
+│  └─────────────────────┘   └───────────────────┘   └───────────────────┘   └───────────────────────┘  │
+└────────────────────────────────────────────────────────────────────────────────────────────────────────┘
 ```
 
-### Data Flow (Left → Right — matches the client diagram)
+### Data Flow (Left to Right)
 
 ```
-Amazon EC2              RDS Aurora          Consumer Apps       MSK              Consumer Apps          ElastiCache
-(Transaction    ──────▶ PostgreSQL   ──────▶ Debezium /  ──────▶ Serverless ──┬─▶ Redis Sink    ──────▶ Redis
- Simulator)             DB (Source)          CDC                 (Kafka)       │
-                                                                               └─▶ Consumer Apps  ──────▶ RDS Aurora
-                                                                                   PostgreSQL Sink        PostgreSQL DB
-                                                                                                          (Sink)
+Amazon EC2           Aurora PostgreSQL    Debezium CDC        MSK Provisioned    Consumer Targets
+(Transaction  ──────▶ Source DB    ──────▶ (MSK Connect) ──────▶ Kafka 3.9.0 ──┬──▶ ElastiCache Redis
+ Simulator)           (17.7)                                    2 Brokers        │
+                                                                SASL/SCRAM       └──▶ Aurora PostgreSQL
+                                                                                        Sink DB (17.7)
 ```
 
-### Deployment Phases (Left → Right)
+### Deployment Phases (Left to Right)
 
 ```
-PHASE 1 — Foundation     PHASE 2      PHASE 3         PHASE 4                  PHASE 5
-──────────────────────   ──────────   ─────────────   ─────────────────────    ──────────────────────────
-kms                      ec2          aurora_source   msk (Kafka)              elasticache (Redis Sink)
-security_groups    ────▶ (EC2 /  ────▶ (Source    ────▶ msk_connect         ────▶ aurora_sink (PG Sink)
-s3                       App Server)   DB)              (Debezium CDC)
+PHASE 1 — Foundation          PHASE 2         PHASE 3          PHASE 4                 PHASE 5
+─────────────────────────     ───────────────  ──────────────   ──────────────────────   ─────────────────────────
+kms                           ec2              aurora_source    msk (Kafka)              elasticache (Redis Sink)
+security_groups    ─────────▶ vpc_endpoints ──▶ (Source DB) ────▶ msk_connect         ──▶ aurora_sink (PG Sink)
+s3                            (App Server)                        (Debezium CDC)
 secrets
 iam
 ```
 
 ---
 
-## Quick Start — Run This First
+## Current Configuration
+
+| Setting | Value |
+|---|---|
+| Environment | `poc` |
+| VPC | `vpc-0ed44b92f11b73815` |
+| Public Subnets | `subnet-038946a978f266b7d`, `subnet-052b8a9527604c064` |
+| Private Subnets | `subnet-0afa40d43201113c7`, `subnet-09fbbd79068ad5555` |
+| EC2 AMI | `ami-04486bbfa25728941` |
+| EC2 Type | `t3.xlarge` · 100 GB gp3 · no public IP |
+| EC2 Access | Jump server SSH (port 22, VPC CIDR only) + SSM via VPC endpoints |
+| EC2 Key Pair | `caltech-keypair` |
+| SSH Allowed CIDR | `172.31.0.0/16` (VPC only) |
+| Aurora Version | `17.7` |
+| MSK Type | Provisioned · Kafka 3.9.0 · `kafka.m5.2xlarge` |
+| MSK Brokers | 2 (one per private subnet/AZ) |
+| MSK Auth | SASL/SCRAM port 9096 (app clients) + IAM port 9098 (MSK Connect) |
+| MSK Storage | 250 GB per broker |
+| State Bucket | `caltech-terraform-state-342448511503` |
+
+---
+
+## Quick Start
 
 ```bash
 cd prod-stack
 chmod +x scripts/init.sh
-./scripts/init.sh --profile caltect-account
+./scripts/init.sh --profile default
 ```
 
-The script reads `backend.hcl` automatically — creates S3 state bucket, DynamoDB lock table, runs `terraform init` and `terraform validate`.
+Creates S3 state bucket, DynamoDB lock table, runs `terraform init` and `terraform validate`.
 
 ---
 
@@ -68,109 +90,26 @@ The script reads `backend.hcl` automatically — creates S3 state bucket, Dynamo
 |---|---|
 | Terraform | >= 1.5.0 |
 | AWS CLI | >= 2.x |
-| AWS Profile | `caltect-account` configured in `~/.aws/credentials` |
-| Existing VPC | Must already exist — get IDs from AWS console |
-| EC2 AMI | Amazon Linux 2023 AMI ID for us-west-2 |
-| Debezium ZIP | Downloaded and uploaded to S3 before MSK Connect step |
+| AWS Profile | `default` configured in `~/.aws/credentials` |
+| EC2 Key Pair | `caltech-keypair` created in AWS console (us-west-2) |
+| Jump Server | Required for SSH to EC2 — EC2 has no public IP |
+| Debezium ZIP | Must be uploaded to S3 before MSK Connect step |
 
 ```bash
-terraform version                                      # >= 1.5.0
-aws --version                                          # >= 2.x
-aws sts get-caller-identity --profile caltect-account  # verify auth
+terraform version                                # >= 1.5.0
+aws --version                                    # >= 2.x
+aws sts get-caller-identity --profile default    # verify auth → Account: 342448511503
 ```
 
 ---
 
-## Step 1 — Fill in Required Variables
-
-Open `terraform.tfvars` and replace all `XXXXXXXXXXXXXXXXX` placeholders.
-
-### Mandatory — must be set before any apply
-
-| Variable | How to get it |
-|---|---|
-| `vpc_id` | `aws ec2 describe-vpcs --profile caltect-account --region us-west-2 --output table` |
-| `public_subnet_ids` | Subnets where `MapPublicIpOnLaunch = true` |
-| `private_subnet_ids` | Subnets where `MapPublicIpOnLaunch = false` |
-| `ec2_ami_id` | See CLI command below |
-
-**Get subnet IDs:**
-```bash
-aws ec2 describe-subnets \
-  --profile caltect-account --region us-west-2 \
-  --query "Subnets[*].{ID:SubnetId,AZ:AvailabilityZone,Public:MapPublicIpOnLaunch,Name:Tags[?Key=='Name']|[0].Value}" \
-  --output table
-```
-
-**Get latest Amazon Linux 2023 AMI:**
-```bash
-aws ec2 describe-images \
-  --profile caltect-account --region us-west-2 \
-  --owners amazon \
-  --filters "Name=name,Values=al2023-ami-2023.*-x86_64" \
-  --query "sort_by(Images, &CreationDate)[-1].{ID:ImageId,Name:Name}" \
-  --output table
-```
-
-### Version variables — adjust per client requirement
-
-| Variable | Default | Change when |
-|---|---|---|
-| `aurora_engine_version` | `16.3` | Client specifies a different PostgreSQL version |
-| `kafkaconnect_version` | `2.7.1` | Client requires a specific Kafka Connect version |
-| `java_package` | `java-17-amazon-corretto` | Client needs Java 21 etc. |
-| `msk_iam_auth_version` | `1.1.9` | New aws-msk-iam-auth release |
-| `debezium_plugin_s3_key` | `plugins/debezium-connector-postgres-2.5.0.Final-plugin.zip` | Different Debezium version |
-
-### Optional tuning — safe defaults, change only if needed
-
-| Variable | Default | Description |
-|---|---|---|
-| `ec2_instance_type` | `t3.large` | EC2 instance size |
-| `ec2_root_volume_gb` | `50` | Root disk size in GB |
-| `aurora_source_min_acu` / `max_acu` | `0.5` / `16` | Aurora Source capacity range |
-| `aurora_sink_min_acu` / `max_acu` | `0.5` / `16` | Aurora Sink capacity range |
-| `aurora_backup_retention_period` | `7` | Days to keep automated backups |
-| `aurora_deletion_protection` | `true` | Set `false` only for dev/test teardown |
-| `aurora_skip_final_snapshot` | `false` | Set `true` for dev/test only |
-| `redis_min_data_storage_gb` | `1` | ElastiCache minimum storage |
-| `redis_max_data_storage_gb` | `100` | ElastiCache maximum storage |
-| `msk_connect_min_workers` | `1` | Minimum Debezium worker count |
-| `msk_connect_max_workers` | `2` | Maximum Debezium worker count |
-| `debezium_snapshot_mode` | `initial` | `initial`, `never`, or `always` |
-| `password_length` | `32` | Auto-generated Aurora password length |
-| `kms_deletion_window_days` | `30` | KMS key deletion window (7–30) |
-
----
-
-## Step 2 — Initialize Terraform
-
-```bash
-./scripts/init.sh --profile caltect-account
-```
-
-On success:
-```
-╔══════════════════════════════════╗
-║      Bootstrap Complete!        ║
-╚══════════════════════════════════╝
-  State file : s3://caltech-terraform-state-<account-id>/caltech/prod/terraform.tfstate
-  Lock table : caltech-terraform-lock (us-west-2)
-```
-
----
-
-## Step 3 — Sequential Deployment (Left → Right)
+## Sequential Deployment (Left to Right)
 
 **Deploy each step in order. Verify success before moving to the next.**
 
 ---
 
-## ── PHASE 1: Foundation ─────────────────────────────────────────────────────────
-
-Shared infrastructure everything else depends on. No app-visible outputs yet.
-
----
+## PHASE 1: Foundation
 
 ### 3.1 — KMS Encryption Keys
 
@@ -180,15 +119,15 @@ terraform apply -target=module.kms
 
 | Key alias | Used by |
 |---|---|
-| `alias/caltech-prod-ebs` | EC2 root volume |
-| `alias/caltech-prod-s3` | S3 buckets |
-| `alias/caltech-prod-aurora` | Both Aurora clusters |
-| `alias/caltech-prod-redis` | ElastiCache |
-| `alias/caltech-prod-secrets` | Secrets Manager |
+| `alias/caltech-poc-ebs` | EC2 root volume |
+| `alias/caltech-poc-s3` | S3 buckets |
+| `alias/caltech-poc-aurora` | Both Aurora clusters |
+| `alias/caltech-poc-redis` | ElastiCache |
+| `alias/caltech-poc-secrets` | Secrets Manager + MSK SCRAM secret |
 
 **Verify:**
 ```bash
-aws kms list-aliases --profile caltect-account --region us-west-2 \
+aws kms list-aliases --profile default --region us-west-2 \
   --query "Aliases[?contains(AliasName,'caltech')].AliasName" --output table
 ```
 
@@ -202,23 +141,46 @@ terraform apply -target=module.security_groups
 
 | Security Group | Inbound | Outbound |
 |---|---|---|
-| `caltech-prod-ec2-sg` | None (SSM only) | All |
-| `caltech-prod-msk-sg` | 9098 from EC2 + MSK Connect SG | All |
-| `caltech-prod-msk-connect-sg` | None | All |
-| `caltech-prod-aurora-source-sg` | 5432 from EC2 + MSK Connect SG | All |
-| `caltech-prod-aurora-sink-sg` | 5432 from EC2 SG | All |
-| `caltech-prod-elasticache-sg` | 6379 from EC2 SG | All |
+| `caltech-poc-ec2-sg` | SSH 22 from `172.31.0.0/16` | All |
+| `caltech-poc-vpce-sg` | HTTPS 443 from EC2 SG | All |
+| `caltech-poc-msk-sg` | 9098 IAM + 9096 SCRAM from EC2 + MSK Connect | All |
+| `caltech-poc-msk-connect-sg` | None | All |
+| `caltech-poc-aurora-source-sg` | 5432 from EC2 + MSK Connect | All |
+| `caltech-poc-aurora-sink-sg` | 5432 from EC2 | All |
+| `caltech-poc-elasticache-sg` | 6379 from EC2 | All |
 
 **Verify:**
 ```bash
-aws ec2 describe-security-groups --profile caltect-account --region us-west-2 \
-  --filters "Name=group-name,Values=caltech-prod-*" \
+aws ec2 describe-security-groups --profile default --region us-west-2 \
+  --filters "Name=group-name,Values=caltech-poc-*" \
   --query "SecurityGroups[].GroupName" --output table
 ```
 
 ---
 
+### 3.2b — VPC Endpoints (SSM)
+
+> Required — EC2 has no public IP so SSM agent cannot reach AWS endpoints over the internet.
+
+```bash
+terraform apply -target=module.vpc_endpoints
+```
+
+Creates 3 interface endpoints in the public subnets: `ssm`, `ssmmessages`, `ec2messages`.
+SSM Session Manager will show green after ~2 minutes.
+
+**Verify:**
+```bash
+aws ec2 describe-vpc-endpoints --profile default --region us-west-2 \
+  --filters "Name=tag:Name,Values=caltech-poc-vpce-*" \
+  --query "VpcEndpoints[*].{Name:Tags[?Key=='Name']|[0].Value,State:State}" --output table
+```
+
+---
+
 ### 3.3 — S3 Buckets
+
+> `PutPublicAccessBlock` and `PutBucketPolicy` are skipped — enforced by the org SCP at account level.
 
 ```bash
 terraform apply -target=module.s3
@@ -226,13 +188,13 @@ terraform apply -target=module.s3
 
 | Bucket | Purpose | Lifecycle |
 |---|---|---|
-| `caltech-prod-msk-plugins` | Debezium connector ZIP | Versioned |
-| `caltech-prod-data-lake` | Kafka consumer event archive | 30d→IA, 90d→Glacier |
-| `caltech-prod-msk-logs` | MSK Connect worker logs | Expire after 90d |
+| `caltech-poc-msk-plugins` | Debezium connector ZIP | Versioned, KMS encrypted |
+| `caltech-poc-data-lake` | Kafka consumer event archive | 30d to IA, 90d to Glacier |
+| `caltech-poc-msk-logs` | MSK Connect worker logs | Expire after 90d |
 
 **Verify:**
 ```bash
-aws s3 ls --profile caltect-account | grep caltech
+aws s3 ls --profile default | grep caltech
 ```
 
 ---
@@ -243,11 +205,11 @@ aws s3 ls --profile caltect-account | grep caltech
 terraform apply -target=module.secrets
 ```
 
-Generates random 32-character passwords — **never stored in Terraform state**.
+Generates random 32-character passwords — never stored in Terraform state.
 
 **Verify:**
 ```bash
-aws secretsmanager list-secrets --profile caltect-account --region us-west-2 \
+aws secretsmanager list-secrets --profile default --region us-west-2 \
   --query "SecretList[?contains(Name,'caltech')].Name" --output table
 ```
 
@@ -255,26 +217,24 @@ aws secretsmanager list-secrets --profile caltect-account --region us-west-2 \
 
 ### 3.5 — IAM Roles
 
-> **Note:** IAM is deployed here with `msk_cluster_arn = "*"` (wildcard). After MSK Serverless is deployed in Phase 4, the final `terraform apply` automatically tightens the policy to the exact MSK cluster ARN.
-
 ```bash
 terraform apply -target=module.iam
 ```
 
 | Role | Trust | Permissions |
 |---|---|---|
-| `caltech-prod-ec2-app-role` | ec2.amazonaws.com | SSM · MSK SASL/IAM · Secrets read · S3 read/write |
-| `caltech-prod-msk-connect-role` | kafkaconnect.amazonaws.com | MSK SASL/IAM · S3 plugin+logs · Secrets read · VPC networking |
+| `caltech-poc-ec2-app-role` | ec2.amazonaws.com | SSM · MSK SASL/IAM · Secrets read · S3 read/write |
+| `caltech-poc-msk-connect-role` | kafkaconnect.amazonaws.com | MSK SASL/IAM · S3 plugin+logs · Secrets read · VPC |
 
 **Verify:**
 ```bash
-aws iam list-roles --profile caltect-account \
+aws iam list-roles --profile default \
   --query "Roles[?contains(RoleName,'caltech')].RoleName" --output table
 ```
 
 ---
 
-## ── PHASE 2: App Server (EC2 — leftmost in diagram) ───────────────────────────
+## PHASE 2: App Server
 
 ### 3.6 — Amazon EC2 (Transaction Simulator)
 
@@ -283,45 +243,39 @@ terraform apply -target=module.ec2
 ```
 
 **What gets created:**
-- EC2 instance `caltech-prod-app-server` in public subnet
-- SSM Session Manager access only (no SSH, no open ports)
-- IMDSv2 enforced
-- gp3 EBS root volume (KMS encrypted)
-- Bootstrap installs: Java, AWS CLI, MSK IAM auth JAR
+- EC2 `caltech-poc-app-server` · `t3.xlarge` · 100 GB gp3 (KMS encrypted)
+- Public subnet, **no public IP** — SSH via jump server, SSM via VPC endpoints
+- Key pair `caltech-keypair` · IMDSv2 enforced
 
-**Get instance ID and connect:**
+**Connect via SSM:**
 ```bash
-terraform output ec2_instance_id
-
 aws ssm start-session \
   --target $(terraform output -raw ec2_instance_id) \
-  --region us-west-2 \
-  --profile caltect-account
+  --region us-west-2 --profile default
 ```
 
-**Verify bootstrap (inside SSM session):**
+**Connect via jump server SSH:**
 ```bash
-java -version
-ls -la /opt/aws-msk-iam-auth.jar
+ssh -J ec2-user@<jump-server-public-ip> \
+    -i caltech-keypair.pem \
+    ec2-user@$(terraform output -raw ec2_private_ip)
 ```
 
 ---
 
-> ### 🚀 App Team Handoff — Phase 2
+> ### App Team Handoff — Phase 2
 >
 > | Item | Command |
 > |---|---|
 > | EC2 Instance ID | `terraform output ec2_instance_id` |
-> | EC2 Public IP | `terraform output ec2_public_ip` |
-> | SSM connect command | `terraform output ssm_connect_command` |
->
-> App team can log into the EC2 instance and verify the Java runtime.
+> | EC2 Private IP | `terraform output ec2_private_ip` |
+> | SSM connect | `aws ssm start-session --target $(terraform output -raw ec2_instance_id) --region us-west-2 --profile default` |
 
 ---
 
-## ── PHASE 3: Source Database (Aurora PostgreSQL) ──────────────────────────────
+## PHASE 3: Source Database
 
-### 3.7 — RDS Aurora PostgreSQL DB (Source)
+### 3.7 — Aurora PostgreSQL Source DB
 
 > Takes 5–15 minutes to provision.
 
@@ -330,150 +284,137 @@ terraform apply -target=module.aurora_source
 ```
 
 **What gets created:**
-- Aurora Serverless v2 cluster `caltech-prod-aurora-source`
-- Custom parameter group: `rds.logical_replication=1`, `max_replication_slots=10`, `max_wal_senders=10`
-- KMS-encrypted storage · CloudWatch Logs export enabled
+- Aurora Serverless v2 `caltech-poc-aurora-source` · PostgreSQL 17.7
+- Logical replication: `rds.logical_replication=1`, `max_replication_slots=10`, `max_wal_senders=10`
+- KMS encrypted · CloudWatch Logs · Deletion protection ON
 
 **Verify:**
 ```bash
-aws rds describe-db-clusters --profile caltect-account --region us-west-2 \
-  --db-cluster-identifier caltech-prod-aurora-source \
+aws rds describe-db-clusters --profile default --region us-west-2 \
+  --db-cluster-identifier caltech-poc-aurora-source \
   --query "DBClusters[0].{Status:Status,Endpoint:Endpoint}" --output table
 ```
 
-**Get connection details:**
+**Get password:**
 ```bash
-terraform output aurora_source_endpoint
-
 aws secretsmanager get-secret-value \
   --secret-id $(terraform output -raw aurora_source_secret_arn) \
-  --query SecretString --output text \
-  --profile caltect-account | python3 -m json.tool
+  --query SecretString --output text --profile default
 ```
 
 ---
 
-> ### 🚀 App Team Handoff — Phase 3
+> ### App Team Handoff — Phase 3
 >
-> | Item | Value / Command |
+> | Item | Value |
 > |---|---|
 > | Source DB endpoint | `terraform output aurora_source_endpoint` |
-> | Source DB port | `5432` |
-> | Source DB name | `sourcedb` |
-> | Source DB username | `dbadmin` |
-> | Source DB password | `aws secretsmanager get-secret-value --secret-id $(terraform output -raw aurora_source_secret_arn) --query SecretString --output text --profile caltect-account` |
->
-> App team can now deploy and run the **Transaction Simulator** against Aurora Source.
+> | Port | `5432` |
+> | DB name | `sourcedb` |
+> | Username | `dbadmin` |
+> | Password | `aws secretsmanager get-secret-value --secret-id $(terraform output -raw aurora_source_secret_arn) --query SecretString --output text --profile default` |
 
 ---
 
-## ── PHASE 4: CDC Pipeline (Debezium → MSK Connect → Kafka) ───────────────────
+## PHASE 4: CDC Pipeline
 
-### 3.8 — MSK Serverless (Kafka)
+### 3.8 — MSK Provisioned (Kafka)
 
-> Takes 5–10 minutes to provision.
+> Takes 15–30 minutes to provision.
 
 ```bash
 terraform apply -target=module.msk
 ```
 
 **What gets created:**
-- MSK Serverless cluster `caltech-prod-msk`
-- SASL/IAM authentication · TLS in-transit · Multi-AZ across private subnets
+- MSK Provisioned `caltech-poc-msk` · Kafka 3.9.0 · KRaft mode
+- `kafka.m5.2xlarge` · 2 brokers · 250 GB EBS each
+- SASL/SCRAM port 9096 (app clients) + IAM port 9098 (MSK Connect)
+- SCRAM credentials stored in Secrets Manager: `AmazonMSK_caltech-poc-scram` · username: `kafkauser`
 
 **Verify:**
 ```bash
-aws kafka list-clusters-v2 --profile caltect-account --region us-west-2 \
-  --query "ClusterInfoList[?ClusterName=='caltech-prod-msk'].{Name:ClusterName,State:ClusterType}" \
+aws kafka list-clusters-v2 --profile default --region us-west-2 \
+  --query "ClusterInfoList[?ClusterName=='caltech-poc-msk'].{Name:ClusterName,State:ClusterType}" \
   --output table
 ```
 
-**Get broker endpoint:**
+**Get broker endpoints:**
 ```bash
-terraform output msk_bootstrap_brokers
+terraform output msk_bootstrap_brokers      # SASL/SCRAM port 9096 — for app clients
+terraform output msk_bootstrap_brokers_iam  # IAM port 9098 — for MSK Connect
+```
+
+**Get SCRAM password:**
+```bash
+aws secretsmanager get-secret-value \
+  --secret-id AmazonMSK_caltech-poc-scram \
+  --query SecretString --output text --profile default
 ```
 
 ---
 
-### 3.9 — MSK Connect + Debezium CDC Connector
+### 3.9 — MSK Connect + Debezium CDC
 
-> **PREREQUISITE: Upload the Debezium ZIP to S3 before running terraform apply.**
+> Upload the Debezium ZIP to S3 before running terraform apply.
 
-#### 3.9a — Download Debezium connector ZIP
+#### 3.9a — Download Debezium ZIP
 
 ```bash
 curl -L -o debezium-connector-postgres-2.5.0.Final-plugin.zip \
   "https://repo1.maven.org/maven2/io/debezium/debezium-connector-postgres/2.5.0.Final/debezium-connector-postgres-2.5.0.Final-plugin.zip"
 ```
 
-#### 3.9b — Upload ZIP to the plugins S3 bucket
+#### 3.9b — Upload to S3
 
 ```bash
 aws s3 cp debezium-connector-postgres-2.5.0.Final-plugin.zip \
   s3://$(terraform output -raw s3_plugins_bucket)/plugins/debezium-connector-postgres-2.5.0.Final-plugin.zip \
-  --profile caltect-account
+  --profile default
 
-# Verify upload
-aws s3 ls s3://$(terraform output -raw s3_plugins_bucket)/plugins/ --profile caltect-account
+aws s3 ls s3://$(terraform output -raw s3_plugins_bucket)/plugins/ --profile default
 ```
 
 #### 3.9c — Deploy MSK Connect
 
-> Takes 10–15 minutes to provision.
+> Takes 10–15 minutes.
 
 ```bash
 terraform apply -target=module.msk_connect
 ```
 
-**What gets created:**
-- Debezium PostgreSQL connector pointing at Aurora Source
-- MSK Connect workers with autoscaling (1–2 workers, scale at 80% CPU)
-- Log delivery to `caltech-prod-msk-logs` S3 bucket
+MSK Connect workers authenticate to MSK via **IAM** (port 9098). Autoscaling 1–2 workers, scale at 80% CPU.
 
-**Verify connector is RUNNING:**
+**Verify connector RUNNING:**
 ```bash
-aws kafkaconnect list-connectors --profile caltect-account --region us-west-2 \
-  --query "connectors[?connectorName=='caltech-prod-debezium-postgres-connector'].{Name:connectorName,State:connectorState}" \
+aws kafkaconnect list-connectors --profile default --region us-west-2 \
+  --query "connectors[?connectorName=='caltech-poc-debezium-postgres-connector'].{Name:connectorName,State:connectorState}" \
   --output table
 ```
 
 ---
 
-> ### 🚀 App Team Handoff — Phase 4
->
-> CDC pipeline is live — changes written to Aurora Source now flow into Kafka topics:
+> ### App Team Handoff — Phase 4
 >
 > | Item | Command |
 > |---|---|
-> | MSK Bootstrap brokers | `terraform output msk_bootstrap_brokers` |
+> | MSK brokers (SASL/SCRAM) | `terraform output msk_bootstrap_brokers` |
 > | MSK Cluster ARN | `terraform output msk_cluster_arn` |
-> | Kafka topic prefix | `caltech-prod.sourcedb.<table-name>` |
-> | Connector status | `aws kafkaconnect list-connectors --profile caltect-account --region us-west-2` |
-> | CDC logs | `aws s3 ls s3://$(terraform output -raw s3_logs_bucket)/msk-connect/ --profile caltect-account` |
->
-> App team can verify CDC: write a row to Aurora Source → check the Kafka topic for the change event.
+> | SCRAM username | `kafkauser` |
+> | SCRAM password | `aws secretsmanager get-secret-value --secret-id AmazonMSK_caltech-poc-scram --query SecretString --output text --profile default` |
+> | Kafka topic prefix | `caltech-poc.sourcedb.<table-name>` |
 
 ---
 
-## ── PHASE 5: Consumer Targets (Right side of diagram) ─────────────────────────
+## PHASE 5: Consumer Targets
 
-### 3.10 — ElastiCache Redis Serverless (Redis Sink)
+### 3.10 — ElastiCache Redis Serverless
 
 ```bash
 terraform apply -target=module.elasticache
 ```
 
-**What gets created:**
-- ElastiCache Serverless cache `caltech-prod-redis`
-- TLS always-on · KMS-encrypted at rest
-
-**Verify:**
-```bash
-aws elasticache describe-serverless-caches --profile caltect-account --region us-west-2 \
-  --serverless-cache-name caltech-prod-redis \
-  --query "ServerlessCaches[0].{Name:ServerlessCacheName,Status:Status,Endpoint:Endpoint.Address}" \
-  --output table
-```
+Creates `caltech-poc-redis` · TLS always-on · KMS encrypted.
 
 ```bash
 terraform output redis_endpoint
@@ -482,72 +423,49 @@ terraform output redis_port
 
 ---
 
-### 3.11 — RDS Aurora PostgreSQL DB (Sink)
+### 3.11 — Aurora PostgreSQL Sink DB
 
-> Takes 5–15 minutes to provision.
+> Takes 5–15 minutes.
 
 ```bash
 terraform apply -target=module.aurora_sink
 ```
 
-**What gets created:**
-- Aurora Serverless v2 cluster `caltech-prod-aurora-sink`
-- KMS-encrypted storage · Deletion protection enabled
-
-**Verify:**
-```bash
-aws rds describe-db-clusters --profile caltect-account --region us-west-2 \
-  --db-cluster-identifier caltech-prod-aurora-sink \
-  --query "DBClusters[0].{Status:Status,Endpoint:Endpoint}" --output table
-```
+Creates `caltech-poc-aurora-sink` · PostgreSQL 17.7 · KMS encrypted · Deletion protection ON.
 
 ```bash
 terraform output aurora_sink_endpoint
 
 aws secretsmanager get-secret-value \
   --secret-id $(terraform output -raw aurora_sink_secret_arn) \
-  --query SecretString --output text \
-  --profile caltect-account | python3 -m json.tool
+  --query SecretString --output text --profile default
 ```
 
 ---
 
-> ### 🚀 App Team Handoff — Phase 5 (Full Stack Ready)
->
-> Complete pipeline is deployed. Hand over all connection details:
+> ### App Team Handoff — Phase 5 (Full Stack Ready)
 >
 > | Service | Item | Command |
 > |---|---|---|
-> | EC2 | Instance ID | `terraform output ec2_instance_id` |
-> | EC2 | SSM connect | `terraform output ssm_connect_command` |
+> | EC2 | Private IP | `terraform output ec2_private_ip` |
+> | EC2 | SSM | `aws ssm start-session --target $(terraform output -raw ec2_instance_id) --region us-west-2 --profile default` |
 > | Aurora Source | Endpoint | `terraform output aurora_source_endpoint` |
-> | Aurora Source | Password | `aws secretsmanager get-secret-value --secret-id $(terraform output -raw aurora_source_secret_arn) --query SecretString --output text --profile caltect-account` |
-> | MSK | Bootstrap brokers | `terraform output msk_bootstrap_brokers` |
+> | Aurora Source | Password | `aws secretsmanager get-secret-value --secret-id $(terraform output -raw aurora_source_secret_arn) --query SecretString --output text --profile default` |
+> | MSK | SCRAM brokers | `terraform output msk_bootstrap_brokers` |
+> | MSK | SCRAM password | `aws secretsmanager get-secret-value --secret-id AmazonMSK_caltech-poc-scram --query SecretString --output text --profile default` |
 > | Aurora Sink | Endpoint | `terraform output aurora_sink_endpoint` |
-> | Aurora Sink | Password | `aws secretsmanager get-secret-value --secret-id $(terraform output -raw aurora_sink_secret_arn) --query SecretString --output text --profile caltect-account` |
+> | Aurora Sink | Password | `aws secretsmanager get-secret-value --secret-id $(terraform output -raw aurora_sink_secret_arn) --query SecretString --output text --profile default` |
 > | Redis | Endpoint | `terraform output redis_endpoint` |
-> | Redis | Port | `terraform output redis_port` |
-> | S3 Data Lake | Bucket | `terraform output s3_data_lake_bucket` |
->
-> **End-to-end test:**
-> 1. Connect to EC2 via SSM
-> 2. Run Transaction Simulator → writes rows to Aurora Source
-> 3. Debezium captures changes → publishes to MSK Kafka topic
-> 4. Redis Sink Consumer reads from MSK → writes to ElastiCache
-> 5. PostgreSQL Sink Consumer reads from MSK → writes to Aurora Sink
-> 6. Verify rows appear in both ElastiCache Redis and Aurora Sink DB
 
 ---
 
-## ── PHASE 6: Final Pass ─────────────────────────────────────────────────────────
-
-### 3.12 — Full Stack Apply
-
-Tightens the IAM MSK policy from `*` to the exact MSK cluster ARN and confirms the full stack is consistent:
+## PHASE 6: Final Pass
 
 ```bash
 terraform apply
 ```
+
+Tightens IAM MSK policy from `*` to the exact cluster ARN. Validates full stack consistency.
 
 ---
 
@@ -555,47 +473,19 @@ terraform apply
 
 | Phase | Step | Module | Command | Est. Time | App Team Gets |
 |---|---|---|---|---|---|
-| **Foundation** | 3.1 | kms | `terraform apply -target=module.kms` | 1 min | — |
-| **Foundation** | 3.2 | security_groups | `terraform apply -target=module.security_groups` | 1 min | — |
-| **Foundation** | 3.3 | s3 | `terraform apply -target=module.s3` | 1 min | — |
-| **Foundation** | 3.4 | secrets | `terraform apply -target=module.secrets` | 1 min | — |
-| **Foundation** | 3.5 | iam | `terraform apply -target=module.iam` | 1 min | — |
-| **App Server** | 3.6 | ec2 | `terraform apply -target=module.ec2` | 2 min | ✅ SSM access |
-| **Source DB** | 3.7 | aurora_source | `terraform apply -target=module.aurora_source` | 5–15 min | ✅ Source DB endpoint + password |
-| **CDC** | 3.8 | msk | `terraform apply -target=module.msk` | 5–10 min | ✅ MSK broker endpoint |
-| **CDC** | 3.9 | msk_connect | Upload ZIP → `terraform apply -target=module.msk_connect` | 10–15 min | ✅ Kafka topics live |
-| **Consumers** | 3.10 | elasticache | `terraform apply -target=module.elasticache` | 2 min | ✅ Redis endpoint |
-| **Consumers** | 3.11 | aurora_sink | `terraform apply -target=module.aurora_sink` | 5–15 min | ✅ Sink DB endpoint + password |
-| **Final** | 3.12 | all | `terraform apply` | 1 min | ✅ Full stack + IAM tightened |
-
----
-
-## All Outputs Reference
-
-```bash
-terraform output
-```
-
-| Output | Description |
-|---|---|
-| `ec2_instance_id` | EC2 instance ID |
-| `ec2_public_ip` | EC2 public IP address |
-| `ssm_connect_command` | Full `aws ssm start-session` command |
-| `msk_cluster_arn` | MSK Serverless cluster ARN |
-| `msk_bootstrap_brokers` | Kafka bootstrap broker string (SASL/IAM) |
-| `aurora_source_endpoint` | Aurora Source writer endpoint |
-| `aurora_source_reader_endpoint` | Aurora Source reader endpoint |
-| `aurora_source_secret_arn` | Secrets Manager ARN for source password |
-| `aurora_sink_endpoint` | Aurora Sink writer endpoint |
-| `aurora_sink_reader_endpoint` | Aurora Sink reader endpoint |
-| `aurora_sink_secret_arn` | Secrets Manager ARN for sink password |
-| `redis_endpoint` | ElastiCache Redis endpoint |
-| `redis_port` | ElastiCache Redis port (TLS) |
-| `s3_plugins_bucket` | MSK plugin bucket name |
-| `s3_data_lake_bucket` | Data lake bucket name |
-| `s3_logs_bucket` | MSK logs bucket name |
-| `debezium_plugin_arn` | Debezium custom plugin ARN |
-| `debezium_connector_arn` | Debezium connector ARN |
+| Foundation | 3.1 | kms | `terraform apply -target=module.kms` | 1 min | — |
+| Foundation | 3.2 | security_groups | `terraform apply -target=module.security_groups` | 1 min | — |
+| Foundation | 3.2b | vpc_endpoints | `terraform apply -target=module.vpc_endpoints` | 2 min | — |
+| Foundation | 3.3 | s3 | `terraform apply -target=module.s3` | 1 min | — |
+| Foundation | 3.4 | secrets | `terraform apply -target=module.secrets` | 1 min | — |
+| Foundation | 3.5 | iam | `terraform apply -target=module.iam` | 1 min | — |
+| App Server | 3.6 | ec2 | `terraform apply -target=module.ec2` | 2 min | Instance ID + private IP |
+| Source DB | 3.7 | aurora_source | `terraform apply -target=module.aurora_source` | 5–15 min | Source DB endpoint + password |
+| CDC | 3.8 | msk | `terraform apply -target=module.msk` | 15–30 min | MSK brokers + SCRAM credentials |
+| CDC | 3.9 | msk_connect | Upload ZIP then `terraform apply -target=module.msk_connect` | 10–15 min | Kafka topics live |
+| Consumers | 3.10 | elasticache | `terraform apply -target=module.elasticache` | 2 min | Redis endpoint |
+| Consumers | 3.11 | aurora_sink | `terraform apply -target=module.aurora_sink` | 5–15 min | Sink DB endpoint + password |
+| Final | 3.12 | all | `terraform apply` | 1 min | Full stack + IAM tightened |
 
 ---
 
@@ -603,64 +493,65 @@ terraform output
 
 ```
 prod-stack/
-├── main.tf                  # Root orchestrator — calls all 11 modules
+├── main.tf                  # Root orchestrator — calls all 12 modules
 ├── variables.tf             # All input variables with descriptions and defaults
 ├── outputs.tf               # All stack outputs
-├── data.tf                  # AWS account identity + VPC data sources
+├── data.tf                  # AWS account identity data source
 ├── versions.tf              # Provider version constraints
 ├── providers.tf             # AWS provider + default_tags
-├── backend.tf               # Remote state backend config
-├── backend.hcl              # Backend values (bucket, key, region, profile)
-├── terraform.tfvars         # ← EDIT THIS FILE before deploying
+├── backend.hcl              # bucket=caltech-terraform-state-342448511503, profile=default
+├── terraform.tfvars         # Active config — all real IDs filled in
+├── scripts/
+│   └── init.sh              # Bootstrap script (Windows MINGW64 + Linux compatible)
 │
 └── modules/
     ├── kms/                 # Step 3.1 — 5 KMS CMKs (ebs, s3, aurora, redis, secrets)
-    ├── security_groups/     # Step 3.2 — 6 security groups (one per service)
-    ├── s3/                  # Step 3.3 — 3 S3 buckets (plugins, data-lake, logs)
+    ├── security_groups/     # Step 3.2 — 7 SGs (SSH on EC2, dual MSK ports 9096+9098)
+    ├── vpc_endpoints/       # Step 3.2b — SSM interface endpoints (ssm, ssmmessages, ec2messages)
+    ├── s3/                  # Step 3.3 — 3 S3 buckets (no public-access-block, org SCP enforces)
     ├── secrets/             # Step 3.4 — Secrets Manager (Aurora passwords)
     ├── iam/                 # Step 3.5 — EC2 + MSK Connect IAM roles
-    ├── ec2/                 # Step 3.6 — App server / Transaction Simulator
-    ├── aurora_source/       # Step 3.7 — Aurora Source DB (logical replication ON)
-    ├── msk/                 # Step 3.8 — MSK Serverless (Kafka)
-    ├── msk_connect/         # Step 3.9 — Debezium CDC connector on MSK Connect
+    ├── ec2/                 # Step 3.6 — t3.xlarge, no public IP, caltech-keypair
+    ├── aurora_source/       # Step 3.7 — Aurora Source 17.7 (logical replication ON)
+    ├── msk/                 # Step 3.8 — MSK Provisioned Kafka 3.9.0, SASL/SCRAM+IAM, 250GB
+    ├── msk_connect/         # Step 3.9 — Debezium CDC connector (IAM auth to MSK)
     ├── elasticache/         # Step 3.10 — ElastiCache Redis Serverless
-    └── aurora_sink/         # Step 3.11 — Aurora Sink DB (PostgreSQL consumer)
+    └── aurora_sink/         # Step 3.11 — Aurora Sink 17.7
 ```
 
 ---
 
-## Updating a Single Service
+## MSK Broker Count
 
-```bash
-# Resize EC2
-terraform apply -target=module.ec2
+Currently **2 brokers** (2 private subnets). Client requirement is 3. To upgrade:
 
-# Upgrade Aurora engine version (update aurora_engine_version in tfvars first)
-terraform apply -target=module.aurora_source
-terraform apply -target=module.aurora_sink
-
-# Upgrade Debezium (upload new ZIP to S3, update debezium_plugin_s3_key in tfvars)
-terraform apply -target=module.msk_connect
-
-# Resize Redis (update redis_max_ecpu_per_second in tfvars)
-terraform apply -target=module.elasticache
-```
+1. Create a 3rd private subnet in a 3rd AZ (`us-west-2c`) in the AWS console
+2. Update `terraform.tfvars`:
+   ```hcl
+   private_subnet_ids = ["subnet-0afa40d43201113c7", "subnet-09fbbd79068ad5555", "subnet-NEW-ID"]
+   msk_broker_count   = 3
+   ```
+3. `terraform apply -target=module.msk`
 
 ---
 
-## Deploying for a Different Client / Environment
+## Common Issues
 
-```bash
-cp terraform.tfvars terraform-staging.tfvars
-# Edit: aws_profile, environment, project, vpc_id, subnets, versions
-terraform apply -var-file=terraform-staging.tfvars
-```
+| Issue | Cause | Fix |
+|---|---|---|
+| `AccessDenied PutPublicAccessBlock` | Org SCP — expected | Script warns and continues. Buckets are private via org policy |
+| `AccessDenied PutBucketPolicy` | Org SCP — expected | Removed from S3 module. Org policy enforces account isolation |
+| SSM agent offline | No public IP + VPC endpoints not deployed | Deploy `module.vpc_endpoints` then wait 2 min |
+| `BucketAlreadyExists` | Bucket name taken by another account | Script suggests `caltech-terraform-state-<account-id>` |
+| MSK `Invalid kafka version` | Kafka 3.9.0 not available yet | `aws kafka list-kafka-versions --region us-west-2` — use latest 3.x |
+| MSK Connect `plugin not found` | Debezium ZIP not uploaded | Complete step 3.9a and 3.9b before 3.9c |
+| Aurora timeout | Normal — takes 5–15 min | Wait, then rerun `terraform apply -target=module.aurora_source` |
+| `Secret already exists` | Recovery window active | Set `secret_recovery_window_days = 0` and reapply |
+| `Error acquiring state lock` | Previous run crashed | `terraform force-unlock <lock-id>` |
 
 ---
 
 ## Destroying the Stack
-
-> **Warning:** Destroys all data. Disable Aurora deletion protection first.
 
 ```bash
 # Step 1 — Disable deletion protection
@@ -679,28 +570,14 @@ terraform destroy
 
 ---
 
-## Common Issues
-
-| Issue | Cause | Fix |
-|---|---|---|
-| `ResourceNotFoundException` on DynamoDB lock | Wrong AWS profile | Ensure `profile = "caltect-account"` in `backend.hcl`, re-run `terraform init -backend-config=backend.hcl -reconfigure` |
-| `BucketAlreadyExists` on state bucket | Name taken by another account | Add account ID: `caltech-terraform-state-<account-id>` in `backend.hcl` |
-| `SubscriptionRequiredException` on MSK | Account not activated | Accept MSK Serverless terms in AWS console |
-| MSK Connect `plugin not found` | Debezium ZIP not in S3 | Complete Step 3.9a–b before 3.9c |
-| Aurora creation timeout | Normal — takes 5–15 min | Wait, then rerun `terraform apply -target=module.aurora_source` |
-| `Secret already exists` | Recovery window active | Set `secret_recovery_window_days = 0` and reapply |
-| `Error acquiring state lock` | Previous run crashed | Run `terraform force-unlock <lock-id>` |
-| EC2 bootstrap failed | user_data error | Check `/var/log/cloud-init-output.log` via SSM session |
-
----
-
 ## Security Notes
 
-- **No SSH ports** — EC2 access via SSM Session Manager only
+- **No public IP on EC2** — accessible only via jump server SSH (`172.31.0.0/16`) or SSM
+- **SSM via VPC endpoints** — SSM traffic stays on AWS private network
 - **IMDSv2 enforced** — prevents SSRF-based credential theft on EC2
-- **TLS everywhere** — MSK in-transit, ElastiCache always-on TLS, S3 TLS-only policy
-- **KMS CMK per service** — separate key per service; compromise of one does not expose others
-- **Account-only S3 policy** — buckets deny all requests from other AWS accounts
-- **Secrets Manager** — passwords never in Terraform state; `lifecycle { ignore_changes = [master_password] }` on all Aurora clusters
+- **MSK dual auth** — SASL/SCRAM (port 9096) for app clients, IAM (port 9098) for MSK Connect
+- **SCRAM credentials** — auto-generated in Secrets Manager as `AmazonMSK_caltech-poc-scram`
+- **KMS CMK per service** — ebs, s3, aurora, redis, secrets each have their own key
+- **Org SCP enforced** — public access block and bucket policies managed at org level, not per-bucket
 - **Deletion protection** — Aurora clusters default to `deletion_protection = true`
 - **IAM least-privilege** — MSK policy tightened to exact cluster ARN on final `terraform apply`
