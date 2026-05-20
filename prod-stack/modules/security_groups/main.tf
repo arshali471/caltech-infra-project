@@ -33,11 +33,11 @@ resource "aws_security_group" "ec2" {
 
 resource "aws_security_group" "msk" {
   name        = "${var.name}-msk-sg"
-  description = "MSK Serverless - SASL/IAM (${var.msk_port}) from EC2 and MSK Connect"
+  description = "MSK Provisioned - SASL/SCRAM port ${var.msk_scram_port} and IAM port ${var.msk_port}"
   vpc_id      = var.vpc_id
 
   ingress {
-    description     = "MSK from EC2"
+    description     = "MSK SASL/IAM from EC2 (MSK Connect uses this)"
     from_port       = var.msk_port
     to_port         = var.msk_port
     protocol        = "tcp"
@@ -45,9 +45,25 @@ resource "aws_security_group" "msk" {
   }
 
   ingress {
-    description     = "MSK from MSK Connect workers"
+    description     = "MSK SASL/IAM from MSK Connect workers"
     from_port       = var.msk_port
     to_port         = var.msk_port
+    protocol        = "tcp"
+    security_groups = [aws_security_group.msk_connect.id]
+  }
+
+  ingress {
+    description     = "MSK SASL/SCRAM from EC2 (app clients)"
+    from_port       = var.msk_scram_port
+    to_port         = var.msk_scram_port
+    protocol        = "tcp"
+    security_groups = [aws_security_group.ec2.id]
+  }
+
+  ingress {
+    description     = "MSK SASL/SCRAM from MSK Connect workers"
+    from_port       = var.msk_scram_port
+    to_port         = var.msk_scram_port
     protocol        = "tcp"
     security_groups = [aws_security_group.msk_connect.id]
   }

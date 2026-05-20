@@ -7,8 +7,15 @@ variable "vpc_id" {
 }
 
 variable "msk_port" {
-  type    = number
-  default = 9098
+  description = "MSK IAM auth port (used by MSK Connect)"
+  type        = number
+  default     = 9098
+}
+
+variable "msk_scram_port" {
+  description = "MSK SASL/SCRAM port (used by app clients)"
+  type        = number
+  default     = 9096
 }
 
 variable "postgres_port" {

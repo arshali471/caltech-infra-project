@@ -48,9 +48,15 @@ variable "private_subnet_ids" {
 # ---- Network ports ----------------------------------------------------------
 
 variable "msk_port" {
-  description = "MSK SASL/IAM broker port"
+  description = "MSK IAM broker port (used by MSK Connect)"
   type        = number
   default     = 9098
+}
+
+variable "msk_scram_port" {
+  description = "MSK SASL/SCRAM broker port (used by app clients)"
+  type        = number
+  default     = 9096
 }
 
 variable "postgres_port" {
@@ -265,6 +271,32 @@ variable "redis_max_ecpu_per_second" {
   description = "Maximum ECPU per second"
   type        = number
   default     = 500000
+}
+
+# ---- MSK Provisioned --------------------------------------------------------
+
+variable "msk_kafka_version" {
+  description = "Apache Kafka version for MSK Provisioned cluster"
+  type        = string
+  default     = "3.9.0"
+}
+
+variable "msk_broker_count" {
+  description = "Number of MSK broker nodes (must equal number of private subnets)"
+  type        = number
+  default     = 3
+}
+
+variable "msk_broker_instance_type" {
+  description = "MSK broker instance type"
+  type        = string
+  default     = "kafka.m5.2xlarge"
+}
+
+variable "msk_broker_volume_size_gb" {
+  description = "EBS storage per broker in GB"
+  type        = number
+  default     = 250
 }
 
 # ---- MSK Connect + Debezium -------------------------------------------------

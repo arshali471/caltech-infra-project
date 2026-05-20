@@ -8,7 +8,7 @@ resource "aws_instance" "app" {
   instance_type               = var.instance_type
   subnet_id                   = var.subnet_id
   key_name                    = var.key_pair_name
-  associate_public_ip_address = true
+  associate_public_ip_address = false
   iam_instance_profile        = var.instance_profile_name
   vpc_security_group_ids      = [var.security_group_id]
 
@@ -25,7 +25,7 @@ resource "aws_instance" "app" {
     kms_key_id            = var.ebs_kms_key_arn
     delete_on_termination = true
   }
-
+  /*
   user_data = base64encode(<<-EOF
     #!/bin/bash
     set -euo pipefail
@@ -39,7 +39,7 @@ resource "aws_instance" "app" {
     echo "Bootstrap complete - $$(date)"
   EOF
   )
-
+  */
   tags = merge(var.tags, {
     Name    = "${var.name}-app-server"
     Purpose = "Transaction Simulator + Kafka Consumers"

@@ -6,32 +6,33 @@
 
 aws_profile = "default"
 aws_region  = "us-west-2"
-environment = "prod"
+environment = "poc"
 project     = "caltech"
 
 # ---- Existing VPC ----------------------------------------------------------
-vpc_id             = "vpc-XXXXXXXXXXXXXXXXX"
-public_subnet_ids  = ["subnet-XXXXXXXXXXXXXXXXX", "subnet-XXXXXXXXXXXXXXXXX"]
-private_subnet_ids = ["subnet-XXXXXXXXXXXXXXXXX", "subnet-XXXXXXXXXXXXXXXXX"]
+vpc_id             = "vpc-0ed44b92f11b73815"
+public_subnet_ids  = ["subnet-038946a978f266b7d", "subnet-052b8a9527604c064"]
+private_subnet_ids = ["subnet-0afa40d43201113c7", "subnet-09fbbd79068ad5555"]
 
 # ---- Network ports ---------------------------------------------------------
-msk_port      = 9098
-postgres_port = 5432
-redis_port    = 6379
+msk_port       = 9098
+msk_scram_port = 9096
+postgres_port  = 5432
+redis_port     = 6379
 
 # ---- EC2 -------------------------------------------------------------------
-ec2_ami_id           = "ami-XXXXXXXXXXXXXXXXX"
+ec2_ami_id           = "ami-04486bbfa25728941"
 ec2_key_pair_name    = "caltech-keypair"
-ssh_allowed_cidr     = ["0.0.0.0/0"]
-ec2_instance_type    = "t3.large"
-ec2_root_volume_gb   = 50
+ssh_allowed_cidr     = ["172.31.0.0/16"]
+ec2_instance_type    = "t3.xlarge"
+ec2_root_volume_gb   = 100
 ec2_volume_type      = "gp3"
-java_package         = "java-17-amazon-corretto"
-msk_iam_auth_version = "1.1.9"
+// java_package         = "java-17-amazon-corretto"
+// msk_iam_auth_version = "1.1.9"
 
 # ---- Aurora (shared) -------------------------------------------------------
 aurora_engine                       = "aurora-postgresql"
-aurora_engine_version               = "16.3"
+aurora_engine_version               = "17.7"
 aurora_backup_retention_period      = 7
 aurora_preferred_backup_window      = "03:00-04:00"
 aurora_preferred_maintenance_window = "sun:05:00-sun:06:00"
@@ -60,6 +61,12 @@ redis_min_data_storage_gb = 1
 redis_max_data_storage_gb = 100
 redis_min_ecpu_per_second = 1000
 redis_max_ecpu_per_second = 500000
+
+# ---- MSK Provisioned -------------------------------------------------------
+msk_kafka_version         = "3.9.0"
+msk_broker_count          = 2
+msk_broker_instance_type  = "kafka.m5.2xlarge"
+msk_broker_volume_size_gb = 250
 
 # ---- MSK Connect -----------------------------------------------------------
 kafkaconnect_version           = "2.7.1"
@@ -96,5 +103,5 @@ tags = {
   CostCenter  = "engineering"
   Terraform   = "true"
   Project     = "caltech"
-  Environment = "prod"
+  Environment = "poc"
 }

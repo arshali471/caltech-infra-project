@@ -68,10 +68,25 @@ module "security_groups" {
   name             = local.name
   vpc_id           = var.vpc_id
   msk_port         = var.msk_port
+  msk_scram_port   = var.msk_scram_port
   postgres_port    = var.postgres_port
   redis_port       = var.redis_port
   ssh_allowed_cidr = var.ssh_allowed_cidr
   tags             = var.tags
+}
+
+###############################################################################
+# Step 2b — VPC Endpoints (SSM — required for Session Manager without public IP)
+###############################################################################
+
+module "vpc_endpoints" {
+  source     = "./modules/vpc_endpoints"
+  name       = local.name
+  vpc_id     = var.vpc_id
+  aws_region = var.aws_region
+  subnet_ids = var.public_subnet_ids
+  ec2_sg_id  = module.security_groups.ec2_sg_id
+  tags       = var.tags
 }
 
 ###############################################################################
@@ -115,9 +130,14 @@ module "msk" {
   source = "./modules/msk"
   name   = local.name
 
-  subnet_ids        = var.private_subnet_ids
-  security_group_id = module.security_groups.msk_sg_id
-  tags              = var.tags
+  subnet_ids            = var.private_subnet_ids
+  security_group_id     = module.security_groups.msk_sg_id
+  kms_key_arn           = module.kms.secrets_key_arn
+  kafka_version         = var.msk_kafka_version
+  broker_count          = var.msk_broker_count
+  broker_instance_type  = var.msk_broker_instance_type
+  broker_volume_size_gb = var.msk_broker_volume_size_gb
+  tags                  = var.tags
 }
 
 ###############################################################################
@@ -241,8 +261,8 @@ module "ec2" {
   root_volume_gb        = var.ec2_root_volume_gb
   root_volume_type      = var.ec2_volume_type
   ebs_kms_key_arn       = module.kms.ebs_key_arn
-  java_package          = var.java_package
-  msk_iam_auth_version  = var.msk_iam_auth_version
+  // java_package          = var.java_package
+  // msk_iam_auth_version  = var.msk_iam_auth_version
   tags                  = var.tags
 }
 
@@ -255,7 +275,7 @@ module "msk_connect" {
   source = "./modules/msk_connect"
   name   = local.name
 
-  bootstrap_servers      = module.msk.bootstrap_brokers
+  bootstrap_servers      = module.msk.bootstrap_brokers_iam
   msk_connect_sg_id      = module.security_groups.msk_connect_sg_id
   private_subnet_ids     = var.private_subnet_ids
   debezium_plugin_s3_key = var.debezium_plugin_s3_key
