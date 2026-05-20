@@ -23,7 +23,7 @@ redis_port     = 6379
 # ---- EC2 -------------------------------------------------------------------
 ec2_ami_id           = "ami-04486bbfa25728941"
 ec2_key_pair_name    = "caltech-keypair"
-ssh_allowed_cidr     = ["172.31.0.0/16"]
+ssh_allowed_cidr     = ["10.145.0.0/24"]
 ec2_instance_type    = "t3.xlarge"
 ec2_root_volume_gb   = 100
 ec2_volume_type      = "gp3"
@@ -63,7 +63,7 @@ redis_min_ecpu_per_second = 1000
 redis_max_ecpu_per_second = 500000
 
 # ---- MSK Provisioned -------------------------------------------------------
-msk_kafka_version         = "3.9.0"
+msk_kafka_version         = "3.9.x"
 msk_broker_count          = 2
 msk_broker_instance_type  = "kafka.m5.2xlarge"
 msk_broker_volume_size_gb = 250

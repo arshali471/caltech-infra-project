@@ -33,7 +33,7 @@ resource "aws_security_group" "ec2" {
 
 resource "aws_security_group" "msk" {
   name        = "${var.name}-msk-sg"
-  description = "MSK Provisioned - SASL/SCRAM port ${var.msk_scram_port} and IAM port ${var.msk_port}"
+  description = "MSK Serverless - SASL/IAM (9098) from EC2 and MSK Connect"
   vpc_id      = var.vpc_id
 
   ingress {

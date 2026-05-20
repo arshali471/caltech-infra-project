@@ -17,9 +17,9 @@ variable "kms_key_arn" {
 }
 
 variable "kafka_version" {
-  description = "Apache Kafka version (e.g. 3.9.0)"
+  description = "Apache Kafka version — MSK valid values: 3.9.x, 3.9.x.kraft, 4.0.x.kraft, 4.1.x.kraft"
   type        = string
-  default     = "3.9.0"
+  default     = "3.9.x"
 }
 
 variable "broker_count" {

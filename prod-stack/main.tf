@@ -85,7 +85,6 @@ module "vpc_endpoints" {
   vpc_id     = var.vpc_id
   aws_region = var.aws_region
   subnet_ids = var.public_subnet_ids
-  ec2_sg_id  = module.security_groups.ec2_sg_id
   tags       = var.tags
 }
 

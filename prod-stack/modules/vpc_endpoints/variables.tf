@@ -15,10 +15,6 @@ variable "subnet_ids" {
   type        = list(string)
 }
 
-variable "ec2_sg_id" {
-  description = "EC2 security group ID allowed to use the endpoints"
-  type        = string
-}
 
 variable "tags" {
   type    = map(string)

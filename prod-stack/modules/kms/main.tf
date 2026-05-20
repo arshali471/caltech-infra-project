@@ -2,6 +2,9 @@
 # modules/kms — one CMK per service, all with annual key rotation
 ###############################################################################
 
+data "aws_caller_identity" "current" {}
+data "aws_region" "current" {}
+
 resource "aws_kms_key" "ebs" {
   description             = "EBS volume encryption - ${var.name}"
   deletion_window_in_days = var.deletion_window_days
@@ -43,6 +46,35 @@ resource "aws_kms_key" "redis" {
   deletion_window_in_days = var.deletion_window_days
   enable_key_rotation     = true
   tags                    = merge(var.tags, { Name = "${var.name}-redis-kms" })
+
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Sid    = "Enable IAM User Permissions"
+        Effect = "Allow"
+        Principal = {
+          AWS = "arn:aws:iam::${data.aws_caller_identity.current.account_id}:root"
+        }
+        Action   = "kms:*"
+        Resource = "*"
+      },
+      {
+        Sid    = "Allow ElastiCache to use the key"
+        Effect = "Allow"
+        Principal = {
+          Service = "elasticache.amazonaws.com"
+        }
+        Action = [
+          "kms:Decrypt",
+          "kms:GenerateDataKey",
+          "kms:CreateGrant",
+          "kms:DescribeKey"
+        ]
+        Resource = "*"
+      }
+    ]
+  })
 }
 
 resource "aws_kms_alias" "redis" {
