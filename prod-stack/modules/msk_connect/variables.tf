@@ -53,7 +53,7 @@ variable "custom_plugin_name" {
 
 variable "kafkaconnect_version" {
   type    = string
-  default = "2.7.1"
+  default = "3.7.x"
 }
 
 variable "min_workers" {

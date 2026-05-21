@@ -71,7 +71,7 @@ msk_broker_instance_type  = "kafka.m5.2xlarge"
 msk_broker_volume_size_gb = 1000
 
 # ---- MSK Connect -----------------------------------------------------------
-kafkaconnect_version           = "3.7.0"
+kafkaconnect_version           = "3.7.x"
 debezium_plugin_s3_key         = "plugins/debezium-debezium-connector-postgresql-3.2.6-1.zip"
 msk_connect_min_workers        = 1
 msk_connect_max_workers        = 2
