@@ -29,6 +29,19 @@ resource "aws_cloudwatch_log_group" "msk" {
   tags              = var.tags
 }
 
+resource "aws_cloudwatch_log_resource_policy" "msk" {
+  policy_name = "${var.name}-msk-log-policy"
+  policy_document = jsonencode({
+    Version = "2012-10-17"
+    Statement = [{
+      Effect    = "Allow"
+      Principal = { Service = "delivery.logs.amazonaws.com" }
+      Action    = ["logs:CreateLogStream", "logs:PutLogEvents"]
+      Resource  = "${aws_cloudwatch_log_group.msk.arn}:*"
+    }]
+  })
+}
+
 resource "aws_msk_cluster" "this" {
   cluster_name           = "${var.name}-msk"
   kafka_version          = var.kafka_version
@@ -65,14 +78,9 @@ resource "aws_msk_cluster" "this" {
 
   logging_info {
     broker_logs {
-      s3 {
-        enabled = true
-        bucket  = var.logs_bucket_name
-        prefix  = "msk-broker-logs/"
-      }
       cloudwatch_logs {
         enabled   = true
-        log_group = "/aws/msk/${var.name}/broker"
+        log_group = aws_cloudwatch_log_group.msk.name
       }
     }
   }

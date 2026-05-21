@@ -136,7 +136,6 @@ module "msk" {
   broker_count          = var.msk_broker_count
   broker_instance_type  = var.msk_broker_instance_type
   broker_volume_size_gb = var.msk_broker_volume_size_gb
-  logs_bucket_name      = module.s3.logs_bucket_name
   tags                  = var.tags
 }
 
