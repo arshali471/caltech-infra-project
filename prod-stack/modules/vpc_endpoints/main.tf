@@ -13,7 +13,7 @@ data "aws_vpc" "this" {
 
 resource "aws_security_group" "endpoints" {
   name        = "${var.name}-vpce-sg"
-  description = "VPC Interface Endpoints - allow HTTPS from all VPC instances"
+  description = "VPC Interface Endpoints - allow HTTPS from EC2"
   vpc_id      = var.vpc_id
 
   ingress {
