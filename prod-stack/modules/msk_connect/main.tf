@@ -6,6 +6,12 @@ data "aws_mskconnect_custom_plugin" "debezium" {
   name = var.custom_plugin_name
 }
 
+resource "aws_cloudwatch_log_group" "msk_connect" {
+  name              = "/aws/mskconnect/${var.name}"
+  retention_in_days = 90
+  tags              = var.tags
+}
+
 resource "aws_mskconnect_worker_configuration" "debezium" {
   name = "${var.name}-debezium-worker-config"
 
@@ -94,10 +100,9 @@ resource "aws_mskconnect_connector" "debezium" {
 
   log_delivery {
     worker_log_delivery {
-      s3 {
-        enabled = true
-        bucket  = var.logs_bucket_name
-        prefix  = var.log_delivery_prefix
+      cloudwatch_logs {
+        enabled   = true
+        log_group = aws_cloudwatch_log_group.msk_connect.name
       }
     }
   }
