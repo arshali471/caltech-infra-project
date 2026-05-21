@@ -41,15 +41,6 @@ variable "broker_volume_size_gb" {
 }
 
 
-variable "logs_bucket_name" {
-  description = "S3 bucket name for MSK broker logs"
-  type        = string
-}
-
-variable "s3_kms_key_arn" {
-  description = "KMS key ARN for S3 encryption used by Firehose"
-  type        = string
-}
 
 variable "tags" {
   type    = map(string)
