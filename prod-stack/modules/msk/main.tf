@@ -117,6 +117,21 @@ resource "aws_cloudwatch_log_subscription_filter" "msk_to_firehose" {
   depends_on      = [aws_cloudwatch_log_group.msk]
 }
 
+# ---- MSK Broker Configuration -----------------------------------------------
+
+resource "aws_msk_configuration" "this" {
+  name           = "${var.name}-msk-config"
+  kafka_versions = [var.kafka_version]
+
+  server_properties = <<-PROPS
+    auto.create.topics.enable=true
+    default.replication.factor=3
+    min.insync.replicas=2
+    num.partitions=1
+    log.retention.hours=168
+  PROPS
+}
+
 # ---- MSK Cluster ------------------------------------------------------------
 
 resource "aws_msk_cluster" "this" {
@@ -134,6 +149,11 @@ resource "aws_msk_cluster" "this" {
         volume_size = var.broker_volume_size_gb
       }
     }
+  }
+
+  configuration_info {
+    arn      = aws_msk_configuration.this.arn
+    revision = aws_msk_configuration.this.latest_revision
   }
 
   client_authentication {
