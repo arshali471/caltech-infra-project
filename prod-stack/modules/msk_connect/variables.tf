@@ -14,10 +14,6 @@ variable "private_subnet_ids" {
   type = list(string)
 }
 
-variable "plugins_bucket_arn" {
-  type = string
-}
-
 variable "plugins_bucket_name" {
   type = string
 }
@@ -48,13 +44,11 @@ variable "aurora_source_password" {
   sensitive = true
 }
 
-variable "debezium_plugin_s3_key" {
-  type = string
-}
 
-variable "plugin_content_type" {
-  type    = string
-  default = "ZIP"
+variable "custom_plugin_name" {
+  description = "Name of the existing MSK Connect custom plugin created by the app team"
+  type        = string
+  default     = "caltech-poc-debezium-postgresql-connector-plugin"
 }
 
 variable "kafkaconnect_version" {
@@ -139,12 +133,30 @@ variable "logical_decoding_plugin_name" {
 
 variable "replication_slot_name" {
   type    = string
-  default = "debezium_slot"
+  default = "dbz_students_slot"
 }
 
 variable "publication_name" {
   type    = string
-  default = "debezium_pub"
+  default = "dbz_publication"
+}
+
+variable "topic_prefix" {
+  description = "Kafka topic prefix for Debezium events"
+  type        = string
+  default     = "students_poc_10"
+}
+
+variable "schema_include_list" {
+  description = "PostgreSQL schemas to capture"
+  type        = string
+  default     = "public"
+}
+
+variable "table_include_list" {
+  description = "Comma-separated tables to capture (schema.table)"
+  type        = string
+  default     = ""
 }
 
 variable "publication_autocreate_mode" {

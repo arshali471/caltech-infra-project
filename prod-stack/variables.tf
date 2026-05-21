@@ -368,13 +368,31 @@ variable "debezium_plugin_name" {
 variable "debezium_slot_name" {
   description = "PostgreSQL replication slot name"
   type        = string
-  default     = "debezium_slot"
+  default     = "dbz_students_slot"
 }
 
 variable "debezium_publication_name" {
   description = "PostgreSQL publication name"
   type        = string
-  default     = "debezium_pub"
+  default     = "dbz_publication"
+}
+
+variable "debezium_topic_prefix" {
+  description = "Kafka topic prefix for Debezium events"
+  type        = string
+  default     = "students_poc_10"
+}
+
+variable "debezium_schema_include_list" {
+  description = "PostgreSQL schema(s) to include in CDC"
+  type        = string
+  default     = "public"
+}
+
+variable "debezium_table_include_list" {
+  description = "Comma-separated list of tables to capture (schema.table format)"
+  type        = string
+  default     = "public.section_enrollments,public.student_attendance,public.student_enrollment,public.student_lms,public.student_term_log"
 }
 
 variable "debezium_tasks_max" {

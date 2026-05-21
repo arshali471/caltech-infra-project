@@ -2,18 +2,8 @@
 # modules/msk_connect — Debezium PostgreSQL CDC connector on MSK Connect
 ###############################################################################
 
-resource "aws_mskconnect_custom_plugin" "debezium" {
-  name         = "${var.name}-debezium-postgres"
-  content_type = var.plugin_content_type
-
-  location {
-    s3 {
-      bucket_arn = var.plugins_bucket_arn
-      file_key   = var.debezium_plugin_s3_key
-    }
-  }
-
-  tags = merge(var.tags, { Name = "${var.name}-debezium-plugin" })
+data "aws_mskconnect_custom_plugin" "debezium" {
+  name = var.custom_plugin_name
 }
 
 resource "aws_mskconnect_worker_configuration" "debezium" {
@@ -56,17 +46,28 @@ resource "aws_mskconnect_connector" "debezium" {
     "database.user"               = var.aurora_source_username
     "database.password"           = var.aurora_source_password
     "database.dbname"             = var.aurora_source_db_name
-    "database.server.name"        = "${var.name}-source"
-    "topic.prefix"                = var.name
+    "topic.prefix"                = var.topic_prefix
     "plugin.name"                 = var.logical_decoding_plugin_name
     "slot.name"                   = var.replication_slot_name
+    "slot.drop.on.stop"           = "false"
     "publication.name"            = var.publication_name
     "publication.autocreate.mode" = var.publication_autocreate_mode
     "snapshot.mode"               = var.snapshot_mode
+    "schema.include.list"         = var.schema_include_list
+    "table.include.list"          = var.table_include_list
+    "heartbeat.interval.ms"       = tostring(var.heartbeat_interval_ms)
     "decimal.handling.mode"       = var.decimal_handling_mode
     "time.precision.mode"         = var.time_precision_mode
-    "tombstones.on.delete"        = tostring(var.tombstones_on_delete)
-    "heartbeat.interval.ms"       = tostring(var.heartbeat_interval_ms)
+    # SMT — ExtractNewRecordState (unwrap envelope)
+    "transforms"                            = "unwrap"
+    "transforms.unwrap.type"                = "io.debezium.transforms.ExtractNewRecordState"
+    "transforms.unwrap.add.headers"         = "op,ts_ms,source.ts_ms,before.external_sourced_id,before.student_id,before.term_id,before.student_enrollment_id,before.section_id"
+    "transforms.unwrap.drop.tombstones"     = "false"
+    "transforms.unwrap.delete.handling.mode" = "drop"
+    "key.converter"                         = var.key_converter
+    "key.converter.schemas.enable"          = tostring(var.converter_schemas_enabled)
+    "value.converter"                       = var.value_converter
+    "value.converter.schemas.enable"        = tostring(var.converter_schemas_enabled)
   }
 
   kafka_cluster {
@@ -85,8 +86,8 @@ resource "aws_mskconnect_connector" "debezium" {
 
   plugin {
     custom_plugin {
-      arn      = aws_mskconnect_custom_plugin.debezium.arn
-      revision = aws_mskconnect_custom_plugin.debezium.latest_revision
+      arn      = data.aws_mskconnect_custom_plugin.debezium.arn
+      revision = data.aws_mskconnect_custom_plugin.debezium.latest_revision
     }
   }
 

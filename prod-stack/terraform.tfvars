@@ -71,8 +71,8 @@ msk_broker_instance_type  = "kafka.m5.2xlarge"
 msk_broker_volume_size_gb = 1000
 
 # ---- MSK Connect -----------------------------------------------------------
-kafkaconnect_version           = "2.7.1"
-debezium_plugin_s3_key         = "plugins/debezium-connector-postgres-2.5.0.Final-plugin.zip"
+kafkaconnect_version           = "3.7.0"
+debezium_plugin_s3_key         = "plugins/debezium-debezium-connector-postgresql-3.2.6-1.zip"
 msk_connect_min_workers        = 1
 msk_connect_max_workers        = 2
 msk_connect_mcu_count          = 1
@@ -82,10 +82,13 @@ msk_connect_scale_out_cpu_pct  = 80
 # ---- Debezium connector ----------------------------------------------------
 debezium_snapshot_mode         = "initial"
 debezium_plugin_name           = "pgoutput"
-debezium_slot_name             = "debezium_slot"
-debezium_publication_name      = "debezium_pub"
+debezium_slot_name             = "dbz_students_slot"
+debezium_publication_name      = "dbz_publication"
+debezium_topic_prefix          = "students_poc_10"
 debezium_tasks_max             = 1
 debezium_heartbeat_interval_ms = 30000
+debezium_schema_include_list   = "public"
+debezium_table_include_list    = "public.section_enrollments,public.student_attendance,public.student_enrollment,public.student_lms,public.student_term_log"
 
 # ---- S3 lifecycle ----------------------------------------------------------
 data_lake_ia_transition_days      = 30
