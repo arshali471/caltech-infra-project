@@ -14,12 +14,6 @@ resource "aws_mskconnect_worker_configuration" "debezium" {
     key.converter.schemas.enable=${var.converter_schemas_enabled}
     value.converter=${var.value_converter}
     value.converter.schemas.enable=${var.converter_schemas_enabled}
-    offset.storage.topic=${var.name}-offsets
-    config.storage.topic=${var.name}-configs
-    status.storage.topic=${var.name}-status
-    offset.storage.replication.factor=${var.offset_storage_replication_factor}
-    config.storage.replication.factor=${var.config_storage_replication_factor}
-    status.storage.replication.factor=${var.status_storage_replication_factor}
   PROPS
 }
 
