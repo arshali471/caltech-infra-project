@@ -3,8 +3,8 @@
 ###############################################################################
 
 locals {
-  msk_topic_arn = "arn:aws:kafka:${var.aws_region}:${var.account_id}:topic/${var.name}/*"
-  msk_group_arn = "arn:aws:kafka:${var.aws_region}:${var.account_id}:group/${var.name}/*"
+  msk_topic_arn = "arn:aws:kafka:${var.aws_region}:${var.account_id}:topic/${var.name}-msk/*"
+  msk_group_arn = "arn:aws:kafka:${var.aws_region}:${var.account_id}:group/${var.name}-msk/*"
 }
 
 ###############################################################################
