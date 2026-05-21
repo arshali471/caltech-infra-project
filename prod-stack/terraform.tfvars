@@ -13,6 +13,7 @@ project     = "caltech"
 vpc_id             = "vpc-0ed44b92f11b73815"
 public_subnet_ids  = ["subnet-038946a978f266b7d", "subnet-052b8a9527604c064"]
 private_subnet_ids = ["subnet-0afa40d43201113c7", "subnet-09fbbd79068ad5555"]
+msk_subnet_ids     = ["subnet-REPLACE_AZ1", "subnet-REPLACE_AZ2", "subnet-REPLACE_AZ3"]
 
 # ---- Network ports ---------------------------------------------------------
 msk_port       = 9098
@@ -64,9 +65,9 @@ redis_max_ecpu_per_second = 500000
 
 # ---- MSK Provisioned -------------------------------------------------------
 msk_kafka_version         = "3.9.x"
-msk_broker_count          = 2
+msk_broker_count          = 3
 msk_broker_instance_type  = "kafka.m5.2xlarge"
-msk_broker_volume_size_gb = 250
+msk_broker_volume_size_gb = 1000
 
 # ---- MSK Connect -----------------------------------------------------------
 kafkaconnect_version           = "2.7.1"

@@ -129,7 +129,7 @@ module "msk" {
   source = "./modules/msk"
   name   = local.name
 
-  subnet_ids            = var.private_subnet_ids
+  subnet_ids            = var.msk_subnet_ids
   security_group_id     = module.security_groups.msk_sg_id
   kms_key_arn           = module.kms.secrets_key_arn
   kafka_version         = var.msk_kafka_version

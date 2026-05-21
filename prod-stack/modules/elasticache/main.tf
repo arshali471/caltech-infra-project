@@ -1,11 +1,11 @@
 ###############################################################################
 # modules/elasticache — ElastiCache Serverless, TLS enforced, KMS encrypted
-# engine: "redis" or "valkey"
 ###############################################################################
 
 resource "aws_elasticache_serverless_cache" "this" {
-  engine = var.engine
-  name   = "${var.name}-redis"
+  engine               = var.engine
+  major_engine_version = var.major_engine_version
+  name                 = "${var.name}-redis"
 
   cache_usage_limits {
     data_storage {

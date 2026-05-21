@@ -41,7 +41,12 @@ variable "public_subnet_ids" {
 }
 
 variable "private_subnet_ids" {
-  description = "Private subnet IDs (MSK, Aurora, ElastiCache, MSK Connect workers)"
+  description = "Private subnet IDs (Aurora, ElastiCache, MSK Connect workers)"
+  type        = list(string)
+}
+
+variable "msk_subnet_ids" {
+  description = "Three private subnet IDs in 3 different AZs — one per MSK broker"
   type        = list(string)
 }
 

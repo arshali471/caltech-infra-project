@@ -19,6 +19,12 @@ variable "engine" {
   default = "redis"
 }
 
+variable "major_engine_version" {
+  description = "Major engine version — 7 for Redis 7.x"
+  type        = string
+  default     = "7"
+}
+
 variable "min_data_storage_gb" {
   type    = number
   default = 1
