@@ -11,7 +11,12 @@ variable "aws_region" {
 }
 
 variable "subnet_ids" {
-  description = "Subnets to place the endpoint ENIs in (same subnet as EC2)"
+  description = "Subnets to place the SSM endpoint ENIs in"
+  type        = list(string)
+}
+
+variable "public_route_table_ids" {
+  description = "Route table IDs for public subnets — S3 Gateway endpoint adds a route here"
   type        = list(string)
 }
 

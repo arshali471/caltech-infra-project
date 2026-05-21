@@ -2,6 +2,7 @@
 # modules/msk — MSK Provisioned cluster
 # App clients  → SASL/SCRAM (port 9096)
 # MSK Connect  → IAM       (port 9098)
+# Logs         → CloudWatch + Kinesis Firehose → S3
 ###############################################################################
 
 resource "random_password" "scram" {
@@ -23,6 +24,8 @@ resource "aws_secretsmanager_secret_version" "scram" {
   })
 }
 
+# ---- CloudWatch Log Group ---------------------------------------------------
+
 resource "aws_cloudwatch_log_group" "msk" {
   name              = "/aws/msk/${var.name}/broker"
   retention_in_days = 90
@@ -41,6 +44,80 @@ resource "aws_cloudwatch_log_resource_policy" "msk" {
     }]
   })
 }
+
+# ---- Kinesis Firehose → S3 (bypasses bucket policy restriction) -------------
+
+resource "aws_iam_role" "firehose" {
+  name = "${var.name}-msk-firehose-role"
+  assume_role_policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [{
+      Effect    = "Allow"
+      Principal = { Service = "firehose.amazonaws.com" }
+      Action    = "sts:AssumeRole"
+    }]
+  })
+  tags = var.tags
+}
+
+resource "aws_iam_role_policy" "firehose" {
+  name = "${var.name}-msk-firehose-policy"
+  role = aws_iam_role.firehose.id
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Sid    = "S3Write"
+        Effect = "Allow"
+        Action = ["s3:PutObject", "s3:GetBucketLocation", "s3:ListBucket", "s3:ListBucketMultipartUploads"]
+        Resource = [
+          "arn:aws:s3:::${var.logs_bucket_name}",
+          "arn:aws:s3:::${var.logs_bucket_name}/*"
+        ]
+      },
+      {
+        Sid      = "KMSEncrypt"
+        Effect   = "Allow"
+        Action   = ["kms:Decrypt", "kms:GenerateDataKey"]
+        Resource = [var.s3_kms_key_arn]
+      },
+      {
+        Sid    = "CloudWatchRead"
+        Effect = "Allow"
+        Action = ["logs:PutLogEvents"]
+        Resource = ["*"]
+      }
+    ]
+  })
+}
+
+resource "aws_kinesis_firehose_delivery_stream" "msk" {
+  name        = "${var.name}-msk-logs-to-s3"
+  destination = "extended_s3"
+
+  extended_s3_configuration {
+    role_arn           = aws_iam_role.firehose.arn
+    bucket_arn         = "arn:aws:s3:::${var.logs_bucket_name}"
+    prefix             = "msk-broker-logs/year=!{timestamp:yyyy}/month=!{timestamp:MM}/day=!{timestamp:dd}/"
+    error_output_prefix = "msk-broker-logs-errors/"
+    buffering_size     = 64
+    buffering_interval = 300
+    compression_format = "GZIP"
+  }
+
+  tags = var.tags
+}
+
+resource "aws_cloudwatch_log_subscription_filter" "msk_to_firehose" {
+  name            = "${var.name}-msk-to-firehose"
+  log_group_name  = aws_cloudwatch_log_group.msk.name
+  filter_pattern  = ""
+  destination_arn = aws_kinesis_firehose_delivery_stream.msk.arn
+  role_arn        = aws_iam_role.firehose.arn
+  depends_on      = [aws_cloudwatch_log_group.msk]
+}
+
+# ---- MSK Cluster ------------------------------------------------------------
 
 resource "aws_msk_cluster" "this" {
   cluster_name           = "${var.name}-msk"

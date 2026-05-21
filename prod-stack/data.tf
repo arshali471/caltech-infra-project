@@ -9,3 +9,11 @@ data "aws_region" "current" {}
 data "aws_vpc" "existing" {
   id = var.vpc_id
 }
+
+data "aws_route_tables" "public" {
+  vpc_id = var.vpc_id
+  filter {
+    name   = "association.subnet-id"
+    values = var.public_subnet_ids
+  }
+}

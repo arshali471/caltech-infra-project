@@ -80,12 +80,13 @@ module "security_groups" {
 ###############################################################################
 
 module "vpc_endpoints" {
-  source     = "./modules/vpc_endpoints"
-  name       = local.name
-  vpc_id     = var.vpc_id
-  aws_region = var.aws_region
-  subnet_ids = var.public_subnet_ids
-  tags       = var.tags
+  source                 = "./modules/vpc_endpoints"
+  name                   = local.name
+  vpc_id                 = var.vpc_id
+  aws_region             = var.aws_region
+  subnet_ids             = var.public_subnet_ids
+  public_route_table_ids = tolist(data.aws_route_tables.public.ids)
+  tags                   = var.tags
 }
 
 ###############################################################################
@@ -136,6 +137,8 @@ module "msk" {
   broker_count          = var.msk_broker_count
   broker_instance_type  = var.msk_broker_instance_type
   broker_volume_size_gb = var.msk_broker_volume_size_gb
+  logs_bucket_name      = module.s3.logs_bucket_name
+  s3_kms_key_arn        = module.kms.s3_key_arn
   tags                  = var.tags
 }
 

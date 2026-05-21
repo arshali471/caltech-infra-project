@@ -54,3 +54,15 @@ resource "aws_vpc_endpoint" "ssm" {
 
   tags = merge(var.tags, { Name = "${var.name}-vpce-${each.key}" })
 }
+
+# ---- S3 Gateway Endpoint (free, no SG needed, adds route to route table) ----
+# Allows EC2 without public IP to access S3 via AWS private network
+
+resource "aws_vpc_endpoint" "s3" {
+  vpc_id            = var.vpc_id
+  service_name      = "com.amazonaws.${var.aws_region}.s3"
+  vpc_endpoint_type = "Gateway"
+  route_table_ids   = var.public_route_table_ids
+
+  tags = merge(var.tags, { Name = "${var.name}-vpce-s3" })
+}
