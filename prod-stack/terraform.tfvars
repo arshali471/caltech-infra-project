@@ -13,7 +13,8 @@ project     = "caltech"
 vpc_id             = "vpc-0ed44b92f11b73815"
 public_subnet_ids  = ["subnet-038946a978f266b7d", "subnet-052b8a9527604c064"]
 private_subnet_ids = ["subnet-0afa40d43201113c7", "subnet-09fbbd79068ad5555"]
-msk_subnet_ids     = ["subnet-REPLACE_AZ1", "subnet-REPLACE_AZ2", "subnet-REPLACE_AZ3"]
+msk_subnet_ids         = ["subnet-REPLACE_AZ1", "subnet-REPLACE_AZ2", "subnet-REPLACE_AZ3"]
+elasticache_subnet_ids = ["subnet-REPLACE_AZ1", "subnet-REPLACE_AZ2"]
 
 # ---- Network ports ---------------------------------------------------------
 msk_port       = 9098

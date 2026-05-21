@@ -40,6 +40,11 @@ variable "broker_volume_size_gb" {
   default     = 250
 }
 
+variable "logs_bucket_name" {
+  description = "S3 bucket name for MSK broker logs"
+  type        = string
+}
+
 variable "tags" {
   type    = map(string)
   default = {}

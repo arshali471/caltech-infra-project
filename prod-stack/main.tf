@@ -136,6 +136,7 @@ module "msk" {
   broker_count          = var.msk_broker_count
   broker_instance_type  = var.msk_broker_instance_type
   broker_volume_size_gb = var.msk_broker_volume_size_gb
+  logs_bucket_name      = module.s3.logs_bucket_name
   tags                  = var.tags
 }
 
@@ -233,7 +234,7 @@ module "elasticache" {
   name   = local.name
 
   engine              = var.elasticache_engine
-  subnet_ids          = var.private_subnet_ids
+  subnet_ids          = var.elasticache_subnet_ids
   security_group_id   = module.security_groups.elasticache_sg_id
   kms_key_arn         = module.kms.redis_key_arn
   min_data_storage_gb = var.redis_min_data_storage_gb

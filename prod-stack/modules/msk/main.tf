@@ -23,6 +23,12 @@ resource "aws_secretsmanager_secret_version" "scram" {
   })
 }
 
+resource "aws_cloudwatch_log_group" "msk" {
+  name              = "/aws/msk/${var.name}/broker"
+  retention_in_days = 90
+  tags              = var.tags
+}
+
 resource "aws_msk_cluster" "this" {
   cluster_name           = "${var.name}-msk"
   kafka_version          = var.kafka_version
@@ -56,6 +62,20 @@ resource "aws_msk_cluster" "this" {
   }
 
   enhanced_monitoring = "PER_BROKER"
+
+  logging_info {
+    broker_logs {
+      s3 {
+        enabled = true
+        bucket  = var.logs_bucket_name
+        prefix  = "msk-broker-logs/"
+      }
+      cloudwatch_logs {
+        enabled   = true
+        log_group = "/aws/msk/${var.name}/broker"
+      }
+    }
+  }
 
   tags = merge(var.tags, { Name = "${var.name}-msk", Purpose = "CDC event streaming" })
 }

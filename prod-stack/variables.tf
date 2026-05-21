@@ -50,6 +50,11 @@ variable "msk_subnet_ids" {
   type        = list(string)
 }
 
+variable "elasticache_subnet_ids" {
+  description = "Two private subnet IDs with free IPs for ElastiCache Serverless VPC endpoints"
+  type        = list(string)
+}
+
 # ---- Network ports ----------------------------------------------------------
 
 variable "msk_port" {
