@@ -48,7 +48,7 @@ variable "aurora_source_password" {
 variable "custom_plugin_name" {
   description = "Name of the existing MSK Connect custom plugin created by the app team"
   type        = string
-  default     = "caltech-poc-debezium-postgresql-connector-plugin"
+  default     = "caltech-poc-debezium-postgresql-source-connector-plugin"
 }
 
 variable "kafkaconnect_version" {

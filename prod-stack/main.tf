@@ -278,7 +278,7 @@ module "msk_connect" {
   bootstrap_servers      = module.msk.bootstrap_brokers_iam
   msk_connect_sg_id      = module.security_groups.msk_connect_sg_id
   private_subnet_ids     = var.private_subnet_ids
-  custom_plugin_name     = "caltech-poc-debezium-postgresql-connector-plugin"
+  custom_plugin_name     = var.msk_connect_custom_plugin_name
   plugins_bucket_name    = module.s3.plugins_bucket_name
   logs_bucket_name       = module.s3.logs_bucket_name
   msk_connect_role_arn   = module.iam.msk_connect_role_arn

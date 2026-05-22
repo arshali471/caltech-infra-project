@@ -323,6 +323,11 @@ variable "debezium_plugin_s3_key" {
   default     = "plugins/debezium-connector-postgres-2.5.0.Final-plugin.zip"
 }
 
+variable "msk_connect_custom_plugin_name" {
+  description = "Name of the existing MSK Connect custom plugin created by the app team"
+  type        = string
+}
+
 variable "msk_connect_min_workers" {
   description = "Minimum MSK Connect worker count"
   type        = number

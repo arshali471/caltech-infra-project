@@ -24,7 +24,7 @@ resource "aws_mskconnect_worker_configuration" "debezium" {
 }
 
 resource "aws_mskconnect_connector" "debezium" {
-  name = "${var.name}-debezium-postgres-connector"
+  name = "${var.name}-debezium-postgres-source-connector"
 
   kafkaconnect_version = var.kafkaconnect_version
 

@@ -68,6 +68,22 @@ resource "aws_security_group" "msk" {
     security_groups = [aws_security_group.msk_connect.id]
   }
 
+  ingress {
+    description     = "MSK Plaintext (9092) from MSK Connect workers"
+    from_port       = 9092
+    to_port         = 9092
+    protocol        = "tcp"
+    security_groups = [aws_security_group.msk_connect.id]
+  }
+
+  ingress {
+    description     = "MSK TLS (9094) from MSK Connect workers"
+    from_port       = 9094
+    to_port         = 9094
+    protocol        = "tcp"
+    security_groups = [aws_security_group.msk_connect.id]
+  }
+
   egress {
     from_port   = 0
     to_port     = 0
