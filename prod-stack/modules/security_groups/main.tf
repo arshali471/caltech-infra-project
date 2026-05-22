@@ -171,6 +171,14 @@ resource "aws_security_group" "aurora_sink" {
     security_groups = [aws_security_group.ec2.id]
   }
 
+  ingress {
+    description     = "PostgreSQL from MSK Connect (JDBC Sink)"
+    from_port       = var.postgres_port
+    to_port         = var.postgres_port
+    protocol        = "tcp"
+    security_groups = [aws_security_group.msk_connect.id]
+  }
+
   egress {
     from_port   = 0
     to_port     = 0
