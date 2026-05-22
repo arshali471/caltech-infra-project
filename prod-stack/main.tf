@@ -378,3 +378,219 @@ module "msk_connect_sink" {
 
   tags = var.tags
 }
+
+###############################################################################
+# Step 13 — MSK Connect Sink: student_attendance (same module, different topic)
+###############################################################################
+
+module "msk_connect_sink_attendance" {
+  source = "./modules/msk_connect"
+  name   = local.name
+
+  connector_name_suffix = "postgres-sink-connector-student-attendance"
+  custom_plugin_name    = var.msk_connect_sink_plugin_name
+  bootstrap_servers     = module.msk.bootstrap_brokers_iam
+  msk_connect_sg_id     = module.security_groups.msk_connect_sg_id
+  private_subnet_ids    = var.private_subnet_ids
+  msk_connect_role_arn  = module.iam.msk_connect_role_arn
+  kafkaconnect_version  = var.kafkaconnect_version
+  min_workers           = var.msk_connect_min_workers
+  max_workers           = var.msk_connect_max_workers
+  mcu_count             = var.msk_connect_mcu_count
+  scale_in_cpu_pct      = var.msk_connect_scale_in_cpu_pct
+  scale_out_cpu_pct     = var.msk_connect_scale_out_cpu_pct
+
+  converter_schemas_enabled = true
+
+  connector_configuration = {
+    "connector.class"                              = "io.confluent.connect.jdbc.JdbcSinkConnector"
+    "tasks.max"                                    = "10"
+    "topics"                                       = "caltech_poc_10.public.student_attendance"
+    "connection.url"                               = "jdbc:postgresql://${module.aurora_sink.endpoint}:${var.postgres_port}/${var.aurora_sink_db_name}"
+    "connection.user"                              = var.aurora_sink_master_username
+    "connection.password"                          = module.secrets.aurora_sink_password
+    "dialect.name"                                 = "PostgreSqlDatabaseDialect"
+    "table.name.format"                            = "student_attendance"
+    "auto.create"                                  = "true"
+    "auto.evolve"                                  = "false"
+    "insert.mode"                                  = "upsert"
+    "delete.enabled"                               = "true"
+    "pk.mode"                                      = "record_key"
+    "transforms"                                   = "unwrap"
+    "transforms.unwrap.type"                       = "io.debezium.transforms.ExtractNewRecordState"
+    "transforms.unwrap.drop.tombstones"            = "false"
+    "key.converter"                                = "org.apache.kafka.connect.json.JsonConverter"
+    "key.converter.schemas.enable"                 = "true"
+    "value.converter"                              = "org.apache.kafka.connect.json.JsonConverter"
+    "value.converter.schemas.enable"               = "true"
+    "consumer.override.max.poll.records"           = "5000"
+    "batch.size"                                   = "5000"
+    "consumer.override.fetch.min.bytes"            = "1048576"
+    "consumer.override.max.partition.fetch.bytes"  = "10485760"
+    "consumer.override.fetch.max.bytes"            = "52428800"
+  }
+
+  tags = var.tags
+}
+
+###############################################################################
+# Step 14 — MSK Connect Sink: student_lms
+###############################################################################
+
+module "msk_connect_sink_lms" {
+  source = "./modules/msk_connect"
+  name   = local.name
+
+  connector_name_suffix = "postgres-sink-connector-student-lms"
+  custom_plugin_name    = var.msk_connect_sink_plugin_name
+  bootstrap_servers     = module.msk.bootstrap_brokers_iam
+  msk_connect_sg_id     = module.security_groups.msk_connect_sg_id
+  private_subnet_ids    = var.private_subnet_ids
+  msk_connect_role_arn  = module.iam.msk_connect_role_arn
+  kafkaconnect_version  = var.kafkaconnect_version
+  min_workers           = var.msk_connect_min_workers
+  max_workers           = var.msk_connect_max_workers
+  mcu_count             = var.msk_connect_mcu_count
+  scale_in_cpu_pct      = var.msk_connect_scale_in_cpu_pct
+  scale_out_cpu_pct     = var.msk_connect_scale_out_cpu_pct
+
+  converter_schemas_enabled = true
+
+  connector_configuration = {
+    "connector.class"                              = "io.confluent.connect.jdbc.JdbcSinkConnector"
+    "tasks.max"                                    = "10"
+    "topics"                                       = "caltech_poc_10.public.student_lms"
+    "connection.url"                               = "jdbc:postgresql://${module.aurora_sink.endpoint}:${var.postgres_port}/${var.aurora_sink_db_name}"
+    "connection.user"                              = var.aurora_sink_master_username
+    "connection.password"                          = module.secrets.aurora_sink_password
+    "dialect.name"                                 = "PostgreSqlDatabaseDialect"
+    "table.name.format"                            = "student_lms"
+    "auto.create"                                  = "true"
+    "auto.evolve"                                  = "false"
+    "insert.mode"                                  = "upsert"
+    "delete.enabled"                               = "true"
+    "pk.mode"                                      = "record_key"
+    "transforms"                                   = "unwrap"
+    "transforms.unwrap.type"                       = "io.debezium.transforms.ExtractNewRecordState"
+    "transforms.unwrap.drop.tombstones"            = "false"
+    "key.converter"                                = "org.apache.kafka.connect.json.JsonConverter"
+    "key.converter.schemas.enable"                 = "true"
+    "value.converter"                              = "org.apache.kafka.connect.json.JsonConverter"
+    "value.converter.schemas.enable"               = "true"
+    "consumer.override.max.poll.records"           = "5000"
+    "batch.size"                                   = "5000"
+    "consumer.override.fetch.min.bytes"            = "1048576"
+    "consumer.override.max.partition.fetch.bytes"  = "10485760"
+    "consumer.override.fetch.max.bytes"            = "52428800"
+  }
+
+  tags = var.tags
+}
+
+###############################################################################
+# Step 15 — MSK Connect Sink: section_enrollments
+###############################################################################
+
+module "msk_connect_sink_section_enrollments" {
+  source = "./modules/msk_connect"
+  name   = local.name
+
+  connector_name_suffix = "postgres-sink-connector-section-enrollments"
+  custom_plugin_name    = var.msk_connect_sink_plugin_name
+  bootstrap_servers     = module.msk.bootstrap_brokers_iam
+  msk_connect_sg_id     = module.security_groups.msk_connect_sg_id
+  private_subnet_ids    = var.private_subnet_ids
+  msk_connect_role_arn  = module.iam.msk_connect_role_arn
+  kafkaconnect_version  = var.kafkaconnect_version
+  min_workers           = var.msk_connect_min_workers
+  max_workers           = var.msk_connect_max_workers
+  mcu_count             = var.msk_connect_mcu_count
+  scale_in_cpu_pct      = var.msk_connect_scale_in_cpu_pct
+  scale_out_cpu_pct     = var.msk_connect_scale_out_cpu_pct
+
+  converter_schemas_enabled = true
+
+  connector_configuration = {
+    "connector.class"                              = "io.confluent.connect.jdbc.JdbcSinkConnector"
+    "tasks.max"                                    = "10"
+    "topics"                                       = "caltech_poc_10.public.section_enrollments"
+    "connection.url"                               = "jdbc:postgresql://${module.aurora_sink.endpoint}:${var.postgres_port}/${var.aurora_sink_db_name}"
+    "connection.user"                              = var.aurora_sink_master_username
+    "connection.password"                          = module.secrets.aurora_sink_password
+    "dialect.name"                                 = "PostgreSqlDatabaseDialect"
+    "table.name.format"                            = "section_enrollments"
+    "auto.create"                                  = "true"
+    "auto.evolve"                                  = "false"
+    "insert.mode"                                  = "upsert"
+    "delete.enabled"                               = "true"
+    "pk.mode"                                      = "record_key"
+    "transforms"                                   = "unwrap"
+    "transforms.unwrap.type"                       = "io.debezium.transforms.ExtractNewRecordState"
+    "transforms.unwrap.drop.tombstones"            = "false"
+    "key.converter"                                = "org.apache.kafka.connect.json.JsonConverter"
+    "key.converter.schemas.enable"                 = "true"
+    "value.converter"                              = "org.apache.kafka.connect.json.JsonConverter"
+    "value.converter.schemas.enable"               = "true"
+    "consumer.override.max.poll.records"           = "5000"
+    "batch.size"                                   = "5000"
+    "consumer.override.fetch.min.bytes"            = "1048576"
+    "consumer.override.max.partition.fetch.bytes"  = "10485760"
+    "consumer.override.fetch.max.bytes"            = "52428800"
+  }
+
+  tags = var.tags
+}
+
+###############################################################################
+# Step 16 — MSK Connect Sink: student_term_log
+###############################################################################
+
+module "msk_connect_sink_term_log" {
+  source = "./modules/msk_connect"
+  name   = local.name
+
+  connector_name_suffix = "postgres-sink-connector-student-term-log"
+  custom_plugin_name    = var.msk_connect_sink_plugin_name
+  bootstrap_servers     = module.msk.bootstrap_brokers_iam
+  msk_connect_sg_id     = module.security_groups.msk_connect_sg_id
+  private_subnet_ids    = var.private_subnet_ids
+  msk_connect_role_arn  = module.iam.msk_connect_role_arn
+  kafkaconnect_version  = var.kafkaconnect_version
+  min_workers           = var.msk_connect_min_workers
+  max_workers           = var.msk_connect_max_workers
+  mcu_count             = var.msk_connect_mcu_count
+  scale_in_cpu_pct      = var.msk_connect_scale_in_cpu_pct
+  scale_out_cpu_pct     = var.msk_connect_scale_out_cpu_pct
+
+  converter_schemas_enabled = true
+
+  connector_configuration = {
+    "connector.class"                              = "io.confluent.connect.jdbc.JdbcSinkConnector"
+    "tasks.max"                                    = "10"
+    "topics"                                       = "caltech_poc_10.public.student_term_log"
+    "connection.url"                               = "jdbc:postgresql://${module.aurora_sink.endpoint}:${var.postgres_port}/${var.aurora_sink_db_name}"
+    "connection.user"                              = var.aurora_sink_master_username
+    "connection.password"                          = module.secrets.aurora_sink_password
+    "dialect.name"                                 = "PostgreSqlDatabaseDialect"
+    "table.name.format"                            = "student_term_log"
+    "auto.create"                                  = "true"
+    "auto.evolve"                                  = "false"
+    "insert.mode"                                  = "upsert"
+    "delete.enabled"                               = "true"
+    "pk.mode"                                      = "record_key"
+    "transforms"                                   = "unwrap"
+    "transforms.unwrap.type"                       = "io.debezium.transforms.ExtractNewRecordState"
+    "transforms.unwrap.drop.tombstones"            = "false"
+    "key.converter"                                = "org.apache.kafka.connect.json.JsonConverter"
+    "key.converter.schemas.enable"                 = "true"
+    "value.converter"                              = "org.apache.kafka.connect.json.JsonConverter"
+    "value.converter.schemas.enable"               = "true"
+    "consumer.override.max.poll.records"           = "5000"
+    "batch.size"                                   = "5000"
+    "consumer.override.fetch.min.bytes"            = "1048576"
+    "consumer.override.max.partition.fetch.bytes"  = "10485760"
+    "consumer.override.fetch.max.bytes"            = "52428800"
+  }
+
+  tags = var.tags
+}

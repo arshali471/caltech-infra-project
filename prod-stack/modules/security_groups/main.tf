@@ -17,6 +17,14 @@ resource "aws_security_group" "ec2" {
     cidr_blocks = var.ssh_allowed_cidr
   }
 
+  ingress {
+    description = "App port 8080"
+    from_port   = 8080
+    to_port     = 8080
+    protocol    = "tcp"
+    cidr_blocks = var.ssh_allowed_cidr
+  }
+
   egress {
     description = "All outbound"
     from_port   = 0
@@ -182,11 +190,19 @@ resource "aws_security_group" "elasticache" {
   vpc_id      = var.vpc_id
 
   ingress {
-    description     = "Redis TLS from EC2"
+    description     = "Redis from EC2 SG"
     from_port       = var.redis_port
     to_port         = var.redis_port
     protocol        = "tcp"
     security_groups = [aws_security_group.ec2.id]
+  }
+
+  ingress {
+    description = "Redis from internal network"
+    from_port   = var.redis_port
+    to_port     = var.redis_port
+    protocol    = "tcp"
+    cidr_blocks = var.ssh_allowed_cidr
   }
 
   egress {
