@@ -1,19 +1,20 @@
 ###############################################################################
-# modules/msk_connect — Debezium PostgreSQL CDC connector on MSK Connect
+# modules/msk_connect — Generic MSK Connect connector (source or sink)
+# Caller passes the full connector_configuration map and connector_name_suffix.
 ###############################################################################
 
-data "aws_mskconnect_custom_plugin" "debezium" {
+data "aws_mskconnect_custom_plugin" "this" {
   name = var.custom_plugin_name
 }
 
-resource "aws_cloudwatch_log_group" "msk_connect" {
-  name              = "/aws/mskconnect/${var.name}"
+resource "aws_cloudwatch_log_group" "this" {
+  name              = "/aws/mskconnect/${var.name}-${var.connector_name_suffix}"
   retention_in_days = 90
   tags              = var.tags
 }
 
-resource "aws_mskconnect_worker_configuration" "debezium" {
-  name = "${var.name}-debezium-worker-config"
+resource "aws_mskconnect_worker_configuration" "this" {
+  name = "${var.name}-${var.connector_name_suffix}-worker-config"
 
   properties_file_content = <<-PROPS
     key.converter=${var.key_converter}
@@ -23,8 +24,8 @@ resource "aws_mskconnect_worker_configuration" "debezium" {
   PROPS
 }
 
-resource "aws_mskconnect_connector" "debezium" {
-  name = "${var.name}-debezium-postgres-source-connector"
+resource "aws_mskconnect_connector" "this" {
+  name = "${var.name}-${var.connector_name_suffix}"
 
   kafkaconnect_version = var.kafkaconnect_version
 
@@ -38,37 +39,7 @@ resource "aws_mskconnect_connector" "debezium" {
     }
   }
 
-  connector_configuration = {
-    "connector.class"             = var.connector_class
-    "tasks.max"                   = tostring(var.tasks_max)
-    "database.hostname"           = var.aurora_source_endpoint
-    "database.port"               = tostring(var.database_port)
-    "database.user"               = var.aurora_source_username
-    "database.password"           = var.aurora_source_password
-    "database.dbname"             = var.aurora_source_db_name
-    "topic.prefix"                = var.topic_prefix
-    "plugin.name"                 = var.logical_decoding_plugin_name
-    "slot.name"                   = var.replication_slot_name
-    "slot.drop.on.stop"           = "false"
-    "publication.name"            = var.publication_name
-    "publication.autocreate.mode" = var.publication_autocreate_mode
-    "snapshot.mode"               = var.snapshot_mode
-    "schema.include.list"         = var.schema_include_list
-    "table.include.list"          = var.table_include_list
-    "heartbeat.interval.ms"       = tostring(var.heartbeat_interval_ms)
-    "decimal.handling.mode"       = var.decimal_handling_mode
-    "time.precision.mode"         = var.time_precision_mode
-    # SMT — ExtractNewRecordState (unwrap envelope)
-    "transforms"                            = "unwrap"
-    "transforms.unwrap.type"                = "io.debezium.transforms.ExtractNewRecordState"
-    "transforms.unwrap.add.headers"         = "op,ts_ms,source.ts_ms,before.external_sourced_id,before.student_id,before.term_id,before.student_enrollment_id,before.section_id"
-    "transforms.unwrap.drop.tombstones"     = "false"
-    "transforms.unwrap.delete.handling.mode" = "drop"
-    "key.converter"                         = var.key_converter
-    "key.converter.schemas.enable"          = tostring(var.converter_schemas_enabled)
-    "value.converter"                       = var.value_converter
-    "value.converter.schemas.enable"        = tostring(var.converter_schemas_enabled)
-  }
+  connector_configuration = var.connector_configuration
 
   kafka_cluster {
     apache_kafka_cluster {
@@ -86,14 +57,14 @@ resource "aws_mskconnect_connector" "debezium" {
 
   plugin {
     custom_plugin {
-      arn      = data.aws_mskconnect_custom_plugin.debezium.arn
-      revision = data.aws_mskconnect_custom_plugin.debezium.latest_revision
+      arn      = data.aws_mskconnect_custom_plugin.this.arn
+      revision = data.aws_mskconnect_custom_plugin.this.latest_revision
     }
   }
 
   worker_configuration {
-    arn      = aws_mskconnect_worker_configuration.debezium.arn
-    revision = aws_mskconnect_worker_configuration.debezium.latest_revision
+    arn      = aws_mskconnect_worker_configuration.this.arn
+    revision = aws_mskconnect_worker_configuration.this.latest_revision
   }
 
   service_execution_role_arn = var.msk_connect_role_arn
@@ -102,10 +73,10 @@ resource "aws_mskconnect_connector" "debezium" {
     worker_log_delivery {
       cloudwatch_logs {
         enabled   = true
-        log_group = aws_cloudwatch_log_group.msk_connect.name
+        log_group = aws_cloudwatch_log_group.this.name
       }
     }
   }
 
-  tags = merge(var.tags, { Name = "${var.name}-debezium-connector" })
+  tags = merge(var.tags, { Name = "${var.name}-${var.connector_name_suffix}" })
 }

@@ -324,8 +324,25 @@ variable "debezium_plugin_s3_key" {
 }
 
 variable "msk_connect_custom_plugin_name" {
-  description = "Name of the existing MSK Connect custom plugin created by the app team"
+  description = "Name of the existing MSK Connect custom plugin created by the app team (source/Debezium)"
   type        = string
+}
+
+variable "msk_connect_sink_plugin_name" {
+  description = "Name of the existing MSK Connect JDBC sink plugin created by the app team"
+  type        = string
+}
+
+variable "sink_topics" {
+  description = "Kafka topic(s) the sink connector consumes from"
+  type        = string
+  default     = "caltech_poc_10.public.student_enrollment"
+}
+
+variable "sink_table_name_format" {
+  description = "Target table name in Aurora Sink DB"
+  type        = string
+  default     = "student_enrollment"
 }
 
 variable "msk_connect_min_workers" {

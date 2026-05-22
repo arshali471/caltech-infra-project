@@ -275,35 +275,106 @@ module "msk_connect" {
   source = "./modules/msk_connect"
   name   = local.name
 
-  bootstrap_servers      = module.msk.bootstrap_brokers_iam
-  msk_connect_sg_id      = module.security_groups.msk_connect_sg_id
-  private_subnet_ids     = var.private_subnet_ids
-  custom_plugin_name     = var.msk_connect_custom_plugin_name
-  plugins_bucket_name    = module.s3.plugins_bucket_name
-  logs_bucket_name       = module.s3.logs_bucket_name
-  msk_connect_role_arn   = module.iam.msk_connect_role_arn
-  aurora_source_endpoint = module.aurora_source.endpoint
-  aurora_source_db_name  = var.aurora_source_db_name
-  aurora_source_username = var.aurora_source_master_username
-  aurora_source_password = module.secrets.aurora_source_password
+  connector_name_suffix = "debezium-postgres-source-connector"
+  custom_plugin_name    = var.msk_connect_custom_plugin_name
+  bootstrap_servers     = module.msk.bootstrap_brokers_iam
+  msk_connect_sg_id     = module.security_groups.msk_connect_sg_id
+  private_subnet_ids    = var.private_subnet_ids
+  msk_connect_role_arn  = module.iam.msk_connect_role_arn
+  kafkaconnect_version  = var.kafkaconnect_version
+  min_workers           = var.msk_connect_min_workers
+  max_workers           = var.msk_connect_max_workers
+  mcu_count             = var.msk_connect_mcu_count
+  scale_in_cpu_pct      = var.msk_connect_scale_in_cpu_pct
+  scale_out_cpu_pct     = var.msk_connect_scale_out_cpu_pct
 
-  kafkaconnect_version   = var.kafkaconnect_version
-  min_workers            = var.msk_connect_min_workers
-  max_workers            = var.msk_connect_max_workers
-  mcu_count              = var.msk_connect_mcu_count
-  scale_in_cpu_pct       = var.msk_connect_scale_in_cpu_pct
-  scale_out_cpu_pct      = var.msk_connect_scale_out_cpu_pct
+  converter_schemas_enabled = false
 
-  snapshot_mode                = var.debezium_snapshot_mode
-  logical_decoding_plugin_name = var.debezium_plugin_name
-  replication_slot_name        = var.debezium_slot_name
-  publication_name             = var.debezium_publication_name
-  topic_prefix                 = var.debezium_topic_prefix
-  schema_include_list          = var.debezium_schema_include_list
-  table_include_list           = var.debezium_table_include_list
-  tasks_max                    = var.debezium_tasks_max
-  heartbeat_interval_ms        = var.debezium_heartbeat_interval_ms
-  database_port                = var.postgres_port
+  connector_configuration = {
+    "connector.class"                          = "io.debezium.connector.postgresql.PostgresConnector"
+    "tasks.max"                                = tostring(var.debezium_tasks_max)
+    "database.hostname"                        = module.aurora_source.endpoint
+    "database.port"                            = tostring(var.postgres_port)
+    "database.user"                            = var.aurora_source_master_username
+    "database.password"                        = module.secrets.aurora_source_password
+    "database.dbname"                          = var.aurora_source_db_name
+    "topic.prefix"                             = var.debezium_topic_prefix
+    "plugin.name"                              = var.debezium_plugin_name
+    "slot.name"                                = var.debezium_slot_name
+    "slot.drop.on.stop"                        = "false"
+    "publication.name"                         = var.debezium_publication_name
+    "publication.autocreate.mode"              = "all_tables"
+    "snapshot.mode"                            = var.debezium_snapshot_mode
+    "schema.include.list"                      = var.debezium_schema_include_list
+    "table.include.list"                       = var.debezium_table_include_list
+    "heartbeat.interval.ms"                    = tostring(var.debezium_heartbeat_interval_ms)
+    "decimal.handling.mode"                    = "double"
+    "time.precision.mode"                      = "connect"
+    "transforms"                               = "unwrap"
+    "transforms.unwrap.type"                   = "io.debezium.transforms.ExtractNewRecordState"
+    "transforms.unwrap.add.headers"            = "op,ts_ms,source.ts_ms,before.external_sourced_id,before.student_id,before.term_id,before.student_enrollment_id,before.section_id"
+    "transforms.unwrap.drop.tombstones"        = "false"
+    "transforms.unwrap.delete.handling.mode"   = "drop"
+    "key.converter"                            = "org.apache.kafka.connect.json.JsonConverter"
+    "key.converter.schemas.enable"             = "false"
+    "value.converter"                          = "org.apache.kafka.connect.json.JsonConverter"
+    "value.converter.schemas.enable"           = "false"
+  }
+
+  tags = var.tags
+}
+
+###############################################################################
+# Step 12 — MSK Connect Sink (same module, JDBC config — MSK → Aurora Sink)
+# PREREQUISITE: module.aurora_sink must be deployed first
+###############################################################################
+
+module "msk_connect_sink" {
+  source = "./modules/msk_connect"
+  name   = local.name
+
+  connector_name_suffix = "postgres-sink-connector-student-enrollment"
+  custom_plugin_name    = var.msk_connect_sink_plugin_name
+  bootstrap_servers     = module.msk.bootstrap_brokers_iam
+  msk_connect_sg_id     = module.security_groups.msk_connect_sg_id
+  private_subnet_ids    = var.private_subnet_ids
+  msk_connect_role_arn  = module.iam.msk_connect_role_arn
+  kafkaconnect_version  = var.kafkaconnect_version
+  min_workers           = var.msk_connect_min_workers
+  max_workers           = var.msk_connect_max_workers
+  mcu_count             = var.msk_connect_mcu_count
+  scale_in_cpu_pct      = var.msk_connect_scale_in_cpu_pct
+  scale_out_cpu_pct     = var.msk_connect_scale_out_cpu_pct
+
+  converter_schemas_enabled = true
+
+  connector_configuration = {
+    "connector.class"                              = "io.confluent.connect.jdbc.JdbcSinkConnector"
+    "tasks.max"                                    = "10"
+    "topics"                                       = var.sink_topics
+    "connection.url"                               = "jdbc:postgresql://${module.aurora_sink.endpoint}:${var.postgres_port}/${var.aurora_sink_db_name}"
+    "connection.user"                              = var.aurora_sink_master_username
+    "connection.password"                          = module.secrets.aurora_sink_password
+    "dialect.name"                                 = "PostgreSqlDatabaseDialect"
+    "table.name.format"                            = var.sink_table_name_format
+    "auto.create"                                  = "true"
+    "auto.evolve"                                  = "false"
+    "insert.mode"                                  = "upsert"
+    "delete.enabled"                               = "true"
+    "pk.mode"                                      = "record_key"
+    "transforms"                                   = "unwrap"
+    "transforms.unwrap.type"                       = "io.debezium.transforms.ExtractNewRecordState"
+    "transforms.unwrap.drop.tombstones"            = "false"
+    "key.converter"                                = "org.apache.kafka.connect.json.JsonConverter"
+    "key.converter.schemas.enable"                 = "true"
+    "value.converter"                              = "org.apache.kafka.connect.json.JsonConverter"
+    "value.converter.schemas.enable"               = "true"
+    "consumer.override.max.poll.records"           = "5000"
+    "batch.size"                                   = "5000"
+    "consumer.override.fetch.min.bytes"            = "1048576"
+    "consumer.override.max.partition.fetch.bytes"  = "10485760"
+    "consumer.override.fetch.max.bytes"            = "52428800"
+  }
 
   tags = var.tags
 }
