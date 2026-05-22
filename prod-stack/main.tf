@@ -366,11 +366,7 @@ module "msk_connect_sink" {
     "key.converter.schemas.enable"                 = "true"
     "value.converter"                              = "org.apache.kafka.connect.json.JsonConverter"
     "value.converter.schemas.enable"               = "true"
-    "consumer.override.max.poll.records"           = "5000"
     "batch.size"                                   = "5000"
-    "consumer.override.fetch.min.bytes"            = "1048576"
-    "consumer.override.max.partition.fetch.bytes"  = "10485760"
-    "consumer.override.fetch.max.bytes"            = "52428800"
   }
 
   tags = var.tags
@@ -417,11 +413,7 @@ module "msk_connect_sink_attendance" {
     "key.converter.schemas.enable"                 = "true"
     "value.converter"                              = "org.apache.kafka.connect.json.JsonConverter"
     "value.converter.schemas.enable"               = "true"
-    "consumer.override.max.poll.records"           = "5000"
     "batch.size"                                   = "5000"
-    "consumer.override.fetch.min.bytes"            = "1048576"
-    "consumer.override.max.partition.fetch.bytes"  = "10485760"
-    "consumer.override.fetch.max.bytes"            = "52428800"
   }
 
   tags = var.tags
@@ -468,11 +460,7 @@ module "msk_connect_sink_lms" {
     "key.converter.schemas.enable"                 = "true"
     "value.converter"                              = "org.apache.kafka.connect.json.JsonConverter"
     "value.converter.schemas.enable"               = "true"
-    "consumer.override.max.poll.records"           = "5000"
     "batch.size"                                   = "5000"
-    "consumer.override.fetch.min.bytes"            = "1048576"
-    "consumer.override.max.partition.fetch.bytes"  = "10485760"
-    "consumer.override.fetch.max.bytes"            = "52428800"
   }
 
   tags = var.tags
@@ -519,11 +507,7 @@ module "msk_connect_sink_section_enrollments" {
     "key.converter.schemas.enable"                 = "true"
     "value.converter"                              = "org.apache.kafka.connect.json.JsonConverter"
     "value.converter.schemas.enable"               = "true"
-    "consumer.override.max.poll.records"           = "5000"
     "batch.size"                                   = "5000"
-    "consumer.override.fetch.min.bytes"            = "1048576"
-    "consumer.override.max.partition.fetch.bytes"  = "10485760"
-    "consumer.override.fetch.max.bytes"            = "52428800"
   }
 
   tags = var.tags
@@ -570,11 +554,7 @@ module "msk_connect_sink_term_log" {
     "key.converter.schemas.enable"                 = "true"
     "value.converter"                              = "org.apache.kafka.connect.json.JsonConverter"
     "value.converter.schemas.enable"               = "true"
-    "consumer.override.max.poll.records"           = "5000"
     "batch.size"                                   = "5000"
-    "consumer.override.fetch.min.bytes"            = "1048576"
-    "consumer.override.max.partition.fetch.bytes"  = "10485760"
-    "consumer.override.fetch.max.bytes"            = "52428800"
   }
 
   tags = var.tags

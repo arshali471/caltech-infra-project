@@ -21,7 +21,6 @@ resource "aws_mskconnect_worker_configuration" "this" {
     key.converter.schemas.enable=${var.converter_schemas_enabled}
     value.converter=${var.value_converter}
     value.converter.schemas.enable=${var.converter_schemas_enabled}
-    connector.client.config.override.policy=All
   PROPS
 }
 
