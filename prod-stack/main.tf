@@ -346,27 +346,27 @@ module "msk_connect_sink" {
   scale_in_cpu_pct      = var.msk_connect_scale_in_cpu_pct
   scale_out_cpu_pct     = var.msk_connect_scale_out_cpu_pct
 
-  converter_schemas_enabled = true
+  converter_schemas_enabled = false
 
   connector_configuration = {
-    "connector.class"                              = "io.confluent.connect.jdbc.JdbcSinkConnector"
-    "tasks.max"                                    = "10"
-    "topics"                                       = var.sink_topics
-    "connection.url"                               = "jdbc:postgresql://${module.aurora_sink.endpoint}:${var.postgres_port}/${var.aurora_sink_db_name}"
-    "connection.user"                              = var.aurora_sink_master_username
-    "connection.password"                          = module.secrets.aurora_sink_password
-    "dialect.name"                                 = "PostgreSqlDatabaseDialect"
-    "table.name.format"                            = var.sink_table_name_format
-    "auto.create"                                  = "true"
-    "auto.evolve"                                  = "false"
-    "insert.mode"                                  = "upsert"
-    "delete.enabled"                               = "true"
-    "pk.mode"                                      = "record_key"
-    "key.converter"                                = "org.apache.kafka.connect.json.JsonConverter"
-    "key.converter.schemas.enable"                 = "true"
-    "value.converter"                              = "org.apache.kafka.connect.json.JsonConverter"
-    "value.converter.schemas.enable"               = "true"
-    "batch.size"                                   = "5000"
+    "connector.class"              = "io.confluent.connect.jdbc.JdbcSinkConnector"
+    "tasks.max"                    = "10"
+    "topics"                       = var.sink_topics
+    "connection.url"               = "jdbc:postgresql://${module.aurora_sink.endpoint}:${var.postgres_port}/${var.aurora_sink_db_name}"
+    "connection.user"              = var.aurora_sink_master_username
+    "connection.password"          = module.secrets.aurora_sink_password
+    "dialect.name"                 = "PostgreSqlDatabaseDialect"
+    "table.name.format"            = var.sink_table_name_format
+    "auto.create"                  = "true"
+    "auto.evolve"                  = "true"
+    "insert.mode"                  = "upsert"
+    "delete.enabled"               = "true"
+    "pk.mode"                      = "record_key"
+    "key.converter"                = "org.apache.kafka.connect.json.JsonConverter"
+    "key.converter.schemas.enable" = "false"
+    "value.converter"              = "org.apache.kafka.connect.json.JsonConverter"
+    "value.converter.schemas.enable" = "false"
+    "batch.size"                   = "5000"
   }
 
   tags = var.tags
@@ -393,27 +393,27 @@ module "msk_connect_sink_attendance" {
   scale_in_cpu_pct      = var.msk_connect_scale_in_cpu_pct
   scale_out_cpu_pct     = var.msk_connect_scale_out_cpu_pct
 
-  converter_schemas_enabled = true
+  converter_schemas_enabled = false
 
   connector_configuration = {
-    "connector.class"                              = "io.confluent.connect.jdbc.JdbcSinkConnector"
-    "tasks.max"                                    = "10"
-    "topics"                                       = "caltech_poc_10.public.student_attendance"
-    "connection.url"                               = "jdbc:postgresql://${module.aurora_sink.endpoint}:${var.postgres_port}/${var.aurora_sink_db_name}"
-    "connection.user"                              = var.aurora_sink_master_username
-    "connection.password"                          = module.secrets.aurora_sink_password
-    "dialect.name"                                 = "PostgreSqlDatabaseDialect"
-    "table.name.format"                            = "student_attendance"
-    "auto.create"                                  = "true"
-    "auto.evolve"                                  = "false"
-    "insert.mode"                                  = "upsert"
-    "delete.enabled"                               = "true"
-    "pk.mode"                                      = "record_key"
-    "key.converter"                                = "org.apache.kafka.connect.json.JsonConverter"
-    "key.converter.schemas.enable"                 = "true"
-    "value.converter"                              = "org.apache.kafka.connect.json.JsonConverter"
-    "value.converter.schemas.enable"               = "true"
-    "batch.size"                                   = "5000"
+    "connector.class"              = "io.confluent.connect.jdbc.JdbcSinkConnector"
+    "tasks.max"                    = "10"
+    "topics"                       = "caltech_poc_10.public.student_attendance"
+    "connection.url"               = "jdbc:postgresql://${module.aurora_sink.endpoint}:${var.postgres_port}/${var.aurora_sink_db_name}"
+    "connection.user"              = var.aurora_sink_master_username
+    "connection.password"          = module.secrets.aurora_sink_password
+    "dialect.name"                 = "PostgreSqlDatabaseDialect"
+    "table.name.format"            = "student_attendance"
+    "auto.create"                  = "true"
+    "auto.evolve"                  = "true"
+    "insert.mode"                  = "upsert"
+    "delete.enabled"               = "true"
+    "pk.mode"                      = "record_key"
+    "key.converter"                = "org.apache.kafka.connect.json.JsonConverter"
+    "key.converter.schemas.enable" = "false"
+    "value.converter"              = "org.apache.kafka.connect.json.JsonConverter"
+    "value.converter.schemas.enable" = "false"
+    "batch.size"                   = "5000"
   }
 
   tags = var.tags
@@ -440,27 +440,27 @@ module "msk_connect_sink_lms" {
   scale_in_cpu_pct      = var.msk_connect_scale_in_cpu_pct
   scale_out_cpu_pct     = var.msk_connect_scale_out_cpu_pct
 
-  converter_schemas_enabled = true
+  converter_schemas_enabled = false
 
   connector_configuration = {
-    "connector.class"                              = "io.confluent.connect.jdbc.JdbcSinkConnector"
-    "tasks.max"                                    = "10"
-    "topics"                                       = "caltech_poc_10.public.student_lms"
-    "connection.url"                               = "jdbc:postgresql://${module.aurora_sink.endpoint}:${var.postgres_port}/${var.aurora_sink_db_name}"
-    "connection.user"                              = var.aurora_sink_master_username
-    "connection.password"                          = module.secrets.aurora_sink_password
-    "dialect.name"                                 = "PostgreSqlDatabaseDialect"
-    "table.name.format"                            = "student_lms"
-    "auto.create"                                  = "true"
-    "auto.evolve"                                  = "false"
-    "insert.mode"                                  = "upsert"
-    "delete.enabled"                               = "true"
-    "pk.mode"                                      = "record_key"
-    "key.converter"                                = "org.apache.kafka.connect.json.JsonConverter"
-    "key.converter.schemas.enable"                 = "true"
-    "value.converter"                              = "org.apache.kafka.connect.json.JsonConverter"
-    "value.converter.schemas.enable"               = "true"
-    "batch.size"                                   = "5000"
+    "connector.class"              = "io.confluent.connect.jdbc.JdbcSinkConnector"
+    "tasks.max"                    = "10"
+    "topics"                       = "caltech_poc_10.public.student_lms"
+    "connection.url"               = "jdbc:postgresql://${module.aurora_sink.endpoint}:${var.postgres_port}/${var.aurora_sink_db_name}"
+    "connection.user"              = var.aurora_sink_master_username
+    "connection.password"          = module.secrets.aurora_sink_password
+    "dialect.name"                 = "PostgreSqlDatabaseDialect"
+    "table.name.format"            = "student_lms"
+    "auto.create"                  = "true"
+    "auto.evolve"                  = "true"
+    "insert.mode"                  = "upsert"
+    "delete.enabled"               = "true"
+    "pk.mode"                      = "record_key"
+    "key.converter"                = "org.apache.kafka.connect.json.JsonConverter"
+    "key.converter.schemas.enable" = "false"
+    "value.converter"              = "org.apache.kafka.connect.json.JsonConverter"
+    "value.converter.schemas.enable" = "false"
+    "batch.size"                   = "5000"
   }
 
   tags = var.tags
@@ -487,27 +487,27 @@ module "msk_connect_sink_section_enrollments" {
   scale_in_cpu_pct      = var.msk_connect_scale_in_cpu_pct
   scale_out_cpu_pct     = var.msk_connect_scale_out_cpu_pct
 
-  converter_schemas_enabled = true
+  converter_schemas_enabled = false
 
   connector_configuration = {
-    "connector.class"                              = "io.confluent.connect.jdbc.JdbcSinkConnector"
-    "tasks.max"                                    = "10"
-    "topics"                                       = "caltech_poc_10.public.section_enrollments"
-    "connection.url"                               = "jdbc:postgresql://${module.aurora_sink.endpoint}:${var.postgres_port}/${var.aurora_sink_db_name}"
-    "connection.user"                              = var.aurora_sink_master_username
-    "connection.password"                          = module.secrets.aurora_sink_password
-    "dialect.name"                                 = "PostgreSqlDatabaseDialect"
-    "table.name.format"                            = "section_enrollments"
-    "auto.create"                                  = "true"
-    "auto.evolve"                                  = "false"
-    "insert.mode"                                  = "upsert"
-    "delete.enabled"                               = "true"
-    "pk.mode"                                      = "record_key"
-    "key.converter"                                = "org.apache.kafka.connect.json.JsonConverter"
-    "key.converter.schemas.enable"                 = "true"
-    "value.converter"                              = "org.apache.kafka.connect.json.JsonConverter"
-    "value.converter.schemas.enable"               = "true"
-    "batch.size"                                   = "5000"
+    "connector.class"              = "io.confluent.connect.jdbc.JdbcSinkConnector"
+    "tasks.max"                    = "10"
+    "topics"                       = "caltech_poc_10.public.section_enrollments"
+    "connection.url"               = "jdbc:postgresql://${module.aurora_sink.endpoint}:${var.postgres_port}/${var.aurora_sink_db_name}"
+    "connection.user"              = var.aurora_sink_master_username
+    "connection.password"          = module.secrets.aurora_sink_password
+    "dialect.name"                 = "PostgreSqlDatabaseDialect"
+    "table.name.format"            = "section_enrollments"
+    "auto.create"                  = "true"
+    "auto.evolve"                  = "true"
+    "insert.mode"                  = "upsert"
+    "delete.enabled"               = "true"
+    "pk.mode"                      = "record_key"
+    "key.converter"                = "org.apache.kafka.connect.json.JsonConverter"
+    "key.converter.schemas.enable" = "false"
+    "value.converter"              = "org.apache.kafka.connect.json.JsonConverter"
+    "value.converter.schemas.enable" = "false"
+    "batch.size"                   = "5000"
   }
 
   tags = var.tags
@@ -534,27 +534,27 @@ module "msk_connect_sink_term_log" {
   scale_in_cpu_pct      = var.msk_connect_scale_in_cpu_pct
   scale_out_cpu_pct     = var.msk_connect_scale_out_cpu_pct
 
-  converter_schemas_enabled = true
+  converter_schemas_enabled = false
 
   connector_configuration = {
-    "connector.class"                              = "io.confluent.connect.jdbc.JdbcSinkConnector"
-    "tasks.max"                                    = "10"
-    "topics"                                       = "caltech_poc_10.public.student_term_log"
-    "connection.url"                               = "jdbc:postgresql://${module.aurora_sink.endpoint}:${var.postgres_port}/${var.aurora_sink_db_name}"
-    "connection.user"                              = var.aurora_sink_master_username
-    "connection.password"                          = module.secrets.aurora_sink_password
-    "dialect.name"                                 = "PostgreSqlDatabaseDialect"
-    "table.name.format"                            = "student_term_log"
-    "auto.create"                                  = "true"
-    "auto.evolve"                                  = "false"
-    "insert.mode"                                  = "upsert"
-    "delete.enabled"                               = "true"
-    "pk.mode"                                      = "record_key"
-    "key.converter"                                = "org.apache.kafka.connect.json.JsonConverter"
-    "key.converter.schemas.enable"                 = "true"
-    "value.converter"                              = "org.apache.kafka.connect.json.JsonConverter"
-    "value.converter.schemas.enable"               = "true"
-    "batch.size"                                   = "5000"
+    "connector.class"              = "io.confluent.connect.jdbc.JdbcSinkConnector"
+    "tasks.max"                    = "10"
+    "topics"                       = "caltech_poc_10.public.student_term_log"
+    "connection.url"               = "jdbc:postgresql://${module.aurora_sink.endpoint}:${var.postgres_port}/${var.aurora_sink_db_name}"
+    "connection.user"              = var.aurora_sink_master_username
+    "connection.password"          = module.secrets.aurora_sink_password
+    "dialect.name"                 = "PostgreSqlDatabaseDialect"
+    "table.name.format"            = "student_term_log"
+    "auto.create"                  = "true"
+    "auto.evolve"                  = "true"
+    "insert.mode"                  = "upsert"
+    "delete.enabled"               = "true"
+    "pk.mode"                      = "record_key"
+    "key.converter"                = "org.apache.kafka.connect.json.JsonConverter"
+    "key.converter.schemas.enable" = "false"
+    "value.converter"              = "org.apache.kafka.connect.json.JsonConverter"
+    "value.converter.schemas.enable" = "false"
+    "batch.size"                   = "5000"
   }
 
   tags = var.tags
