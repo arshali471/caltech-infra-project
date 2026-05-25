@@ -266,6 +266,38 @@ module "ec2" {
   tags                  = var.tags
 }
 
+module "ec2_2" {
+  source = "./modules/ec2"
+  name   = "${local.name}-2"
+
+  ami_id                = var.ec2_ami_id
+  instance_type         = var.ec2_instance_type
+  subnet_id             = var.public_subnet_ids[0]
+  key_pair_name         = var.ec2_key_pair_name
+  security_group_id     = module.security_groups.ec2_sg_id
+  instance_profile_name = module.iam.ec2_instance_profile_name
+  root_volume_gb        = var.ec2_root_volume_gb
+  root_volume_type      = var.ec2_volume_type
+  ebs_kms_key_arn       = module.kms.ebs_key_arn
+  tags                  = var.tags
+}
+
+module "ec2_3" {
+  source = "./modules/ec2"
+  name   = "${local.name}-3"
+
+  ami_id                = var.ec2_ami_id
+  instance_type         = var.ec2_instance_type
+  subnet_id             = var.public_subnet_ids[0]
+  key_pair_name         = var.ec2_key_pair_name
+  security_group_id     = module.security_groups.ec2_sg_id
+  instance_profile_name = module.iam.ec2_instance_profile_name
+  root_volume_gb        = var.ec2_root_volume_gb
+  root_volume_type      = var.ec2_volume_type
+  ebs_kms_key_arn       = module.kms.ebs_key_arn
+  tags                  = var.tags
+}
+
 ###############################################################################
 # Step 9 — MSK Connect + Debezium (Phase 4 — CDC Connector)
 # PREREQUISITE: Upload Debezium ZIP to s3://$(terraform output -raw s3_plugins_bucket)/plugins/

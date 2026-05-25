@@ -10,6 +10,20 @@ output "ssm_connect_command" {
   value       = "aws ssm start-session --target ${module.ec2.instance_id} --region ${var.aws_region}"
 }
 
+output "ec2_2_instance_id" { value = module.ec2_2.instance_id }
+output "ec2_2_public_ip"   { value = module.ec2_2.public_ip }
+output "ssm_connect_command_2" {
+  description = "Open an SSM session to EC2 app server 2"
+  value       = "aws ssm start-session --target ${module.ec2_2.instance_id} --region ${var.aws_region}"
+}
+
+output "ec2_3_instance_id" { value = module.ec2_3.instance_id }
+output "ec2_3_public_ip"   { value = module.ec2_3.public_ip }
+output "ssm_connect_command_3" {
+  description = "Open an SSM session to EC2 app server 3"
+  value       = "aws ssm start-session --target ${module.ec2_3.instance_id} --region ${var.aws_region}"
+}
+
 # ---- MSK -------------------------------------------------------------------
 output "msk_cluster_arn"      { value = module.msk.cluster_arn }
 output "msk_bootstrap_brokers"{ value = module.msk.bootstrap_brokers }
