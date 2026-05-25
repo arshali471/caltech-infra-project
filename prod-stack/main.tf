@@ -266,9 +266,9 @@ module "ec2" {
   tags                  = var.tags
 }
 
-module "ec2_2" {
+module "ec2_pg_sink" {
   source = "./modules/ec2"
-  name   = "${local.name}-2"
+  name   = "${local.name}-pg_sink"
 
   ami_id                = var.ec2_ami_id
   instance_type         = var.ec2_instance_type
@@ -282,9 +282,9 @@ module "ec2_2" {
   tags                  = var.tags
 }
 
-module "ec2_3" {
+module "ec2_redis_sink" {
   source = "./modules/ec2"
-  name   = "${local.name}-3"
+  name   = "${local.name}-redis_sink"
 
   ami_id                = var.ec2_ami_id
   instance_type         = var.ec2_instance_type
