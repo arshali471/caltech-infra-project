@@ -77,6 +77,14 @@ resource "aws_security_group" "msk" {
   }
 
   ingress {
+    description     = "MSK Plaintext (9092) from EC2"
+    from_port       = 9092
+    to_port         = 9092
+    protocol        = "tcp"
+    security_groups = [aws_security_group.ec2.id]
+  }
+
+  ingress {
     description     = "MSK Plaintext (9092) from MSK Connect workers"
     from_port       = 9092
     to_port         = 9092
@@ -85,11 +93,27 @@ resource "aws_security_group" "msk" {
   }
 
   ingress {
+    description     = "MSK TLS (9094) from EC2"
+    from_port       = 9094
+    to_port         = 9094
+    protocol        = "tcp"
+    security_groups = [aws_security_group.ec2.id]
+  }
+
+  ingress {
     description     = "MSK TLS (9094) from MSK Connect workers"
     from_port       = 9094
     to_port         = 9094
     protocol        = "tcp"
     security_groups = [aws_security_group.msk_connect.id]
+  }
+
+  ingress {
+    description     = "MSK SASL/IAM TLS (9096) from EC2"
+    from_port       = 9096
+    to_port         = 9096
+    protocol        = "tcp"
+    security_groups = [aws_security_group.ec2.id]
   }
 
   ingress {
@@ -146,6 +170,14 @@ resource "aws_security_group" "aurora_source" {
   }
 
   ingress {
+    description = "PostgreSQL from VM subnet"
+    from_port   = var.postgres_port
+    to_port     = var.postgres_port
+    protocol    = "tcp"
+    cidr_blocks = var.ssh_allowed_cidr
+  }
+
+  ingress {
     description     = "PostgreSQL from MSK Connect (Debezium)"
     from_port       = var.postgres_port
     to_port         = var.postgres_port
@@ -177,6 +209,14 @@ resource "aws_security_group" "aurora_sink" {
     to_port         = var.postgres_port
     protocol        = "tcp"
     security_groups = [aws_security_group.ec2.id]
+  }
+
+  ingress {
+    description = "PostgreSQL from VM subnet"
+    from_port   = var.postgres_port
+    to_port     = var.postgres_port
+    protocol    = "tcp"
+    cidr_blocks = var.ssh_allowed_cidr
   }
 
   ingress {
