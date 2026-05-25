@@ -1,10 +1,9 @@
 ###############################################################################
-# modules/vpc_endpoints — SSM interface endpoints
-# Allows EC2 instances without public IPs to use SSM Session Manager
-# by routing SSM traffic through the private AWS network.
-#
-# NOTE: private_dns_enabled=true overrides SSM DNS for the entire VPC, so the
-# endpoint SG must allow port 443 from all instances in the VPC (not just one SG).
+# modules/vpc_endpoints — Interface + Gateway endpoints for private subnet access
+# SSM     — EC2 Session Manager (no public IP needed)
+# STS     — IAM token generation for MSK Connect IAM auth in private subnets
+# Secrets — SecretsManager access for MSK SCRAM credentials
+# S3      — S3 access for MSK Connect plugin download (public + private subnets)
 ###############################################################################
 
 data "aws_vpc" "this" {
@@ -34,16 +33,20 @@ resource "aws_security_group" "endpoints" {
   tags = merge(var.tags, { Name = "${var.name}-vpce-sg" })
 }
 
+# ---- SSM Interface Endpoints (for EC2 Session Manager) ----------------------
+
 locals {
-  ssm_services = {
-    ssm         = "com.amazonaws.${var.aws_region}.ssm"
-    ssmmessages = "com.amazonaws.${var.aws_region}.ssmmessages"
-    ec2messages = "com.amazonaws.${var.aws_region}.ec2messages"
+  interface_services = {
+    ssm            = "com.amazonaws.${var.aws_region}.ssm"
+    ssmmessages    = "com.amazonaws.${var.aws_region}.ssmmessages"
+    ec2messages    = "com.amazonaws.${var.aws_region}.ec2messages"
+    sts            = "com.amazonaws.${var.aws_region}.sts"
+    secretsmanager = "com.amazonaws.${var.aws_region}.secretsmanager"
   }
 }
 
-resource "aws_vpc_endpoint" "ssm" {
-  for_each = local.ssm_services
+resource "aws_vpc_endpoint" "interface" {
+  for_each = local.interface_services
 
   vpc_id              = var.vpc_id
   service_name        = each.value
@@ -55,14 +58,22 @@ resource "aws_vpc_endpoint" "ssm" {
   tags = merge(var.tags, { Name = "${var.name}-vpce-${each.key}" })
 }
 
-# ---- S3 Gateway Endpoint (free, no SG needed, adds route to route table) ----
-# Allows EC2 without public IP to access S3 via AWS private network
+# ---- S3 Gateway Endpoint (public + private route tables) --------------------
 
-resource "aws_vpc_endpoint" "s3" {
+resource "aws_vpc_endpoint" "s3_public" {
   vpc_id            = var.vpc_id
   service_name      = "com.amazonaws.${var.aws_region}.s3"
   vpc_endpoint_type = "Gateway"
   route_table_ids   = var.public_route_table_ids
 
-  tags = merge(var.tags, { Name = "${var.name}-vpce-s3" })
+  tags = merge(var.tags, { Name = "${var.name}-vpce-s3-public" })
+}
+
+resource "aws_vpc_endpoint" "s3_private" {
+  vpc_id            = var.vpc_id
+  service_name      = "com.amazonaws.${var.aws_region}.s3"
+  vpc_endpoint_type = "Gateway"
+  route_table_ids   = var.private_route_table_ids
+
+  tags = merge(var.tags, { Name = "${var.name}-vpce-s3-private" })
 }

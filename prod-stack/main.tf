@@ -80,13 +80,14 @@ module "security_groups" {
 ###############################################################################
 
 module "vpc_endpoints" {
-  source                 = "./modules/vpc_endpoints"
-  name                   = local.name
-  vpc_id                 = var.vpc_id
-  aws_region             = var.aws_region
-  subnet_ids             = var.public_subnet_ids
-  public_route_table_ids = tolist(data.aws_route_tables.public.ids)
-  tags                   = var.tags
+  source                  = "./modules/vpc_endpoints"
+  name                    = local.name
+  vpc_id                  = var.vpc_id
+  aws_region              = var.aws_region
+  subnet_ids              = var.public_subnet_ids
+  public_route_table_ids  = tolist(data.aws_route_tables.public.ids)
+  private_route_table_ids = tolist(data.aws_route_tables.private.ids)
+  tags                    = var.tags
 }
 
 ###############################################################################
