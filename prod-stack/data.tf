@@ -17,11 +17,3 @@ data "aws_route_tables" "public" {
     values = var.public_subnet_ids
   }
 }
-
-data "aws_route_tables" "private" {
-  vpc_id = var.vpc_id
-  filter {
-    name   = "association.subnet-id"
-    values = var.private_subnet_ids
-  }
-}

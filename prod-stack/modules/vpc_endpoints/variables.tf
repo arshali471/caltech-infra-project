@@ -20,10 +20,6 @@ variable "public_route_table_ids" {
   type        = list(string)
 }
 
-variable "private_route_table_ids" {
-  description = "Route table IDs for private subnets — S3 Gateway endpoint adds a route here for MSK Connect workers"
-  type        = list(string)
-}
 
 
 variable "tags" {
