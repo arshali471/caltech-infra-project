@@ -33,20 +33,18 @@ resource "aws_security_group" "endpoints" {
   tags = merge(var.tags, { Name = "${var.name}-vpce-sg" })
 }
 
-# ---- SSM Interface Endpoints (for EC2 Session Manager) ----------------------
+# ---- SSM Interface Endpoints (existing — keep resource name to avoid destroy) -
 
 locals {
-  interface_services = {
-    ssm            = "com.amazonaws.${var.aws_region}.ssm"
-    ssmmessages    = "com.amazonaws.${var.aws_region}.ssmmessages"
-    ec2messages    = "com.amazonaws.${var.aws_region}.ec2messages"
-    sts            = "com.amazonaws.${var.aws_region}.sts"
-    secretsmanager = "com.amazonaws.${var.aws_region}.secretsmanager"
+  ssm_services = {
+    ssm         = "com.amazonaws.${var.aws_region}.ssm"
+    ssmmessages = "com.amazonaws.${var.aws_region}.ssmmessages"
+    ec2messages = "com.amazonaws.${var.aws_region}.ec2messages"
   }
 }
 
-resource "aws_vpc_endpoint" "interface" {
-  for_each = local.interface_services
+resource "aws_vpc_endpoint" "ssm" {
+  for_each = local.ssm_services
 
   vpc_id              = var.vpc_id
   service_name        = each.value
@@ -58,16 +56,40 @@ resource "aws_vpc_endpoint" "interface" {
   tags = merge(var.tags, { Name = "${var.name}-vpce-${each.key}" })
 }
 
-# ---- S3 Gateway Endpoint (public + private route tables) --------------------
+# ---- STS + SecretsManager (new — required for MSK Connect in private subnets) -
 
-resource "aws_vpc_endpoint" "s3_public" {
+locals {
+  msk_connect_services = {
+    sts            = "com.amazonaws.${var.aws_region}.sts"
+    secretsmanager = "com.amazonaws.${var.aws_region}.secretsmanager"
+  }
+}
+
+resource "aws_vpc_endpoint" "msk_connect" {
+  for_each = local.msk_connect_services
+
+  vpc_id              = var.vpc_id
+  service_name        = each.value
+  vpc_endpoint_type   = "Interface"
+  subnet_ids          = var.subnet_ids
+  security_group_ids  = [aws_security_group.endpoints.id]
+  private_dns_enabled = true
+
+  tags = merge(var.tags, { Name = "${var.name}-vpce-${each.key}" })
+}
+
+# ---- S3 Gateway — public subnets (existing — keep resource name) -------------
+
+resource "aws_vpc_endpoint" "s3" {
   vpc_id            = var.vpc_id
   service_name      = "com.amazonaws.${var.aws_region}.s3"
   vpc_endpoint_type = "Gateway"
   route_table_ids   = var.public_route_table_ids
 
-  tags = merge(var.tags, { Name = "${var.name}-vpce-s3-public" })
+  tags = merge(var.tags, { Name = "${var.name}-vpce-s3" })
 }
+
+# ---- S3 Gateway — private subnets (new — for MSK Connect plugin download) ---
 
 resource "aws_vpc_endpoint" "s3_private" {
   vpc_id            = var.vpc_id
