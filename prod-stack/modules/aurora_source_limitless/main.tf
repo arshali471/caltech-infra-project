@@ -64,6 +64,8 @@ resource "null_resource" "cluster" {
            --region ${data.aws_region.current.name} >/dev/null 2>&1; then
         echo "Cluster ${local.cluster_id} already exists — skipping create"
       else
+        echo "Waiting 30s for IAM monitoring role propagation..."
+        sleep 30
         aws rds create-db-cluster \
           --db-cluster-identifier ${local.cluster_id} \
           --engine ${var.engine} \
