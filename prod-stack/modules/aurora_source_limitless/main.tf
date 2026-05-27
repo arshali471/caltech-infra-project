@@ -6,7 +6,7 @@
 
 locals {
   pg_major_version = split(".", var.engine_version)[0]
-  pg_family        = "${var.engine}${local.pg_major_version}-limitless"
+  pg_family        = "${var.engine}-limitless${local.pg_major_version}"
 }
 
 resource "aws_db_subnet_group" "this" {
