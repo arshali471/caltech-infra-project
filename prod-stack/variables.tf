@@ -206,6 +206,32 @@ variable "aurora_source_max_acu" {
   default     = 16
 }
 
+# ---- Aurora Limitless variant ----------------------------------------------
+
+variable "aurora_limitless_engine_version" {
+  description = "Aurora PostgreSQL Limitless engine version (must end in -limitless)"
+  type        = string
+  default     = "16.13-limitless"
+}
+
+variable "aurora_limitless_min_acu" {
+  description = "Minimum ACUs for the Limitless shard group"
+  type        = number
+  default     = 16
+}
+
+variable "aurora_limitless_max_acu" {
+  description = "Maximum ACUs for the Limitless shard group"
+  type        = number
+  default     = 32
+}
+
+variable "aurora_limitless_compute_redundancy" {
+  description = "Limitless shard standby count (0=single AZ, 1=one standby, 2=two standbys)"
+  type        = number
+  default     = 0
+}
+
 variable "aurora_source_max_replication_slots" {
   description = "max_replication_slots parameter for Debezium CDC"
   type        = number
