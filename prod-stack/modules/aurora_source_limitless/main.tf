@@ -13,7 +13,6 @@ resource "aws_db_subnet_group" "this" {
 resource "aws_rds_cluster" "this" {
   cluster_identifier              = "${var.name}-aurora-source-limitless"
   engine                          = var.engine
-  engine_mode                     = "provisioned"
   engine_version                  = var.engine_version
   cluster_scalability_type        = "limitless"
   storage_type                    = "aurora-iopt1"
