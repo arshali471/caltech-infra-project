@@ -1,50 +1,13 @@
 ###############################################################################
 # modules/aurora_source_limitless — Aurora PostgreSQL Limitless Database
-# Logical replication enabled (for Debezium CDC) on the limitless variant.
-# Uses aws_rds_shard_group for capacity (instead of serverless v2 scaling).
+# Uses AWS default cluster parameter group (Limitless restricts custom families).
+# Capacity is controlled via aws_rds_shard_group ACU range.
 ###############################################################################
-
-locals {
-  pg_major_version = split(".", var.engine_version)[0]
-  pg_family        = "${var.engine}-limitless${local.pg_major_version}"
-}
 
 resource "aws_db_subnet_group" "this" {
   name       = "${var.name}-aurora-source-limitless-subnet-group"
   subnet_ids = var.subnet_ids
   tags       = merge(var.tags, { Name = "${var.name}-aurora-source-limitless-subnet-group" })
-}
-
-resource "aws_rds_cluster_parameter_group" "this" {
-  name        = "${var.name}-aurora-source-limitless-pg"
-  family      = local.pg_family
-  description = "Logical replication enabled for Debezium CDC on Limitless"
-
-  parameter {
-    name         = "rds.logical_replication"
-    value        = "1"
-    apply_method = "pending-reboot"
-  }
-
-  parameter {
-    name         = "max_replication_slots"
-    value        = tostring(var.max_replication_slots)
-    apply_method = "pending-reboot"
-  }
-
-  parameter {
-    name         = "max_wal_senders"
-    value        = tostring(var.max_wal_senders)
-    apply_method = "pending-reboot"
-  }
-
-  parameter {
-    name         = "wal_sender_timeout"
-    value        = tostring(var.wal_sender_timeout_ms)
-    apply_method = "pending-reboot"
-  }
-
-  tags = merge(var.tags, { Name = "${var.name}-aurora-source-limitless-pg" })
 }
 
 resource "aws_rds_cluster" "this" {
@@ -56,7 +19,6 @@ resource "aws_rds_cluster" "this" {
   database_name                   = var.db_name
   master_username                 = var.master_username
   master_password                 = var.master_password
-  db_cluster_parameter_group_name = aws_rds_cluster_parameter_group.this.name
   db_subnet_group_name            = aws_db_subnet_group.this.name
   vpc_security_group_ids          = [var.security_group_id]
   storage_encrypted               = true
