@@ -16,7 +16,6 @@ resource "aws_rds_cluster" "this" {
   engine_mode                     = "provisioned"
   engine_version                  = var.engine_version
   cluster_scalability_type        = "limitless"
-  database_name                   = var.db_name
   master_username                 = var.master_username
   master_password                 = var.master_password
   db_subnet_group_name            = aws_db_subnet_group.this.name
