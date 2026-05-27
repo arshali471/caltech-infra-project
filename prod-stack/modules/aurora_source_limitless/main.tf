@@ -24,6 +24,28 @@ resource "aws_db_subnet_group" "this" {
   tags       = merge(var.tags, { Name = "${local.cluster_id}-subnet-group" })
 }
 
+# ---- IAM role for RDS Enhanced Monitoring (required by Limitless) ----------
+
+resource "aws_iam_role" "monitoring" {
+  name = "${local.cluster_id}-monitoring-role"
+
+  assume_role_policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [{
+      Effect    = "Allow"
+      Principal = { Service = "monitoring.rds.amazonaws.com" }
+      Action    = "sts:AssumeRole"
+    }]
+  })
+
+  tags = merge(var.tags, { Name = "${local.cluster_id}-monitoring-role" })
+}
+
+resource "aws_iam_role_policy_attachment" "monitoring" {
+  role       = aws_iam_role.monitoring.name
+  policy_arn = "arn:aws:iam::aws:policy/service-role/AmazonRDSEnhancedMonitoringRole"
+}
+
 # ---- Cluster — created via AWS CLI ------------------------------------------
 
 resource "null_resource" "cluster" {
@@ -54,6 +76,12 @@ resource "null_resource" "cluster" {
           --vpc-security-group-ids ${var.security_group_id} \
           --kms-key-id ${var.kms_key_arn} \
           --storage-encrypted \
+          --enable-performance-insights \
+          --performance-insights-kms-key-id ${var.kms_key_arn} \
+          --performance-insights-retention-period 7 \
+          --monitoring-interval 60 \
+          --monitoring-role-arn ${aws_iam_role.monitoring.arn} \
+          --enable-cloudwatch-logs-exports postgresql \
           --backup-retention-period ${var.backup_retention_period} \
           --preferred-backup-window ${var.preferred_backup_window} \
           --preferred-maintenance-window ${var.preferred_maintenance_window} \
@@ -78,7 +106,7 @@ resource "null_resource" "cluster" {
     EOT
   }
 
-  depends_on = [aws_db_subnet_group.this]
+  depends_on = [aws_db_subnet_group.this, aws_iam_role_policy_attachment.monitoring]
 }
 
 # ---- Shard Group — created via AWS CLI after cluster is ready ---------------
