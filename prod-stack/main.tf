@@ -376,6 +376,9 @@ module "msk_connect" {
     "heartbeat.interval.ms"                    = tostring(var.debezium_heartbeat_interval_ms)
     "decimal.handling.mode"                    = "double"
     "time.precision.mode"                      = "connect"
+    "max.queue.size"                           = "30000"
+    "max.batch.size"                           = "5000"
+    "poll.interval.ms"                         = "200"
     "transforms"                               = "unwrap"
     "transforms.unwrap.type"                   = "io.debezium.transforms.ExtractNewRecordState"
     "transforms.unwrap.add.headers"            = "op,ts_ms,source.ts_ms,before.external_sourced_id,before.student_id,before.term_id,before.student_enrollment_id,before.section_id"
