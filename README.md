@@ -1,83 +1,104 @@
-# California Project — Terraform Infrastructure
+# Caltech POC — AWS CDC Pipeline Infrastructure
 
-> **Cloud:** AWS `us-west-1`  
-> **Stack:** Serverless Kubernetes (EKS Fargate) + Serverless Kafka (MSK Serverless) + Serverless PostgreSQL (Aurora Serverless v2 × 2) + Serverless Redis (ElastiCache Serverless) + ALB  
-> **IaC:** Terraform ≥ 1.5 · AWS Provider ~> 5.0  
-> **Philosophy:** 100% serverless — zero EC2 nodes or brokers to manage, patch, or right-size
+> **Client:** Caltech / TCS · **Region:** `us-west-2` · **Account:** `342448511503` · **Stack name:** `caltech-poc`
+> **IaC:** Terraform ≥ 1.5 · AWS Provider ≥ 5.95 · **State backend:** S3 + DynamoDB lock
+
+A production-grade AWS infrastructure that streams row-level changes from a source PostgreSQL database into both a PostgreSQL sink and a Redis cache via Debezium Change Data Capture and a Kafka event bus (Amazon MSK). The entire stack is deployed left-to-right in 6 sequential phases.
 
 ---
 
 ## Table of Contents
 
-1. [What We Are Building](#what-we-are-building)  
-2. [Architecture Overview](#architecture-overview)  
-3. [Repository Structure](#repository-structure)  
-4. [Terraform Modules](#terraform-modules)  
-5. [How Data Flows](#how-data-flows)  
-6. [Security Design](#security-design)  
-7. [Production Best Practices Applied](#production-best-practices-applied)  
-8. [Prerequisites](#prerequisites)  
-9. [How to Deploy](#how-to-deploy)  
-10. [How to Destroy](#how-to-destroy)  
-11. [Module Input Variables Reference](#module-input-variables-reference)  
-12. [Outputs Reference](#outputs-reference)  
-13. [Common Operations](#common-operations)  
-14. [Troubleshooting](#troubleshooting)
-
----
-
-## What We Are Building
-
-This project provisions a **production-grade, multi-tier AWS infrastructure** for the California platform. It is designed around a **Kubernetes-native microservices architecture** backed by a **Change Data Capture (CDC) pipeline** using Kafka and Debezium.
-
-### Core Services
-
-| Layer | Service | Serverless Mode | Purpose |
-|-------|---------|-----------------|----------|
-| **Ingress** | Application Load Balancer (ALB) | Managed (no instances) | Public HTTPS entry point — routes traffic to EKS Fargate pods |
-| **Compute** | Amazon EKS + Fargate Profiles | ✅ **EKS Fargate** — no EC2 nodes | Runs all application workloads, ingress controller, and Debezium CDC connector |
-| **Streaming** | Amazon MSK Serverless | ✅ **MSK Serverless** — no brokers to size | Event backbone — SASL/IAM auth only, port 9098, auto-scales to any throughput |
-| **CDC** | Debezium (EKS Fargate pod) | ✅ Runs on Fargate | Streams database changes from Aurora CDC source into Kafka topics in real time |
-| **Primary DB** | Aurora PostgreSQL Serverless v2 | ✅ **Aurora Serverless v2** — 0.5–64 ACUs | Main transactional database — ACU-based auto-scaling, writer + readers |
-| **CDC Source DB** | Aurora PostgreSQL Serverless v2 | ✅ **Aurora Serverless v2** — 0.5–32 ACUs | CDC source — logical replication enabled for Debezium |
-| **Cache** | ElastiCache Serverless Redis | ✅ **ElastiCache Serverless** — 1–10 GB, ECPU-based | High-speed caching, session storage, Kafka sink target |
+1. [Architecture Overview](#architecture-overview)
+2. [Data Flow](#data-flow)
+3. [Module Inventory](#module-inventory)
+4. [Repository Structure](#repository-structure)
+5. [Network Topology](#network-topology)
+6. [Security Model](#security-model)
+7. [Deployment](#deployment)
+8. [Operations](#operations)
+9. [Outputs](#outputs)
+10. [Troubleshooting](#troubleshooting)
 
 ---
 
 ## Architecture Overview
 
-See [ARCHITECTURE.md](./ARCHITECTURE.md) for full interactive Mermaid diagrams.
+```
+┌────────────────────────────────────────────────────────────────────────────────────────────────────────────┐
+│                              AWS us-west-2  ·  VPC vpc-0ed44b92f11b73815                                   │
+│                                                                                                            │
+│  ┌─────────────────────┐   ┌──────────────────────┐   ┌─────────────────────┐   ┌────────────────────┐   │
+│  │   PUBLIC SUBNET     │   │   PRIVATE SUBNET     │   │   PRIVATE SUBNET    │   │   PRIVATE SUBNET   │   │
+│  │                     │   │                      │   │                     │   │                    │   │
+│  │  ┌───────────────┐  │   │ Aurora PostgreSQL    │   │ MSK Connect         │   │ ElastiCache        │   │
+│  │  │  EC2 ×3       │──┼──▶│ Source DB (16.x      │──▶│ Debezium Source     │──▶│ Redis Serverless   │   │
+│  │  │  t3.xlarge    │  │   │ Serverless v2)       │   │ Connector           │   │ (Redis Sink)       │   │
+│  │  │  • app        │  │   │                      │   │                     │   ├────────────────────┤   │
+│  │  │  • pg_sink    │  │   │ Aurora PostgreSQL    │   │ ▼                   │   │                    │   │
+│  │  │  • redis_sink │  │   │ Source Limitless     │   │ MSK Provisioned     │──▶│ Aurora PostgreSQL  │   │
+│  │  └───────────────┘  │   │ (16.13-limitless)    │   │ Kafka 3.9.x         │   │ Sink DB            │   │
+│  │  VPC Endpoints      │   │                      │   │ kafka.m5.2xlarge    │   │ (Serverless v2)    │   │
+│  │  (SSM × 3)          │   │                      │   │ 2 Brokers           │   │                    │   │
+│  └─────────────────────┘   └──────────────────────┘   │ SASL/IAM (9098)     │   └────────────────────┘   │
+│                                                       │ + SASL/SCRAM (9096) │                            │
+│                                                       │                     │   ┌────────────────────┐   │
+│                                                       │ 5 JDBC Sink         │──▶│ (writes back to    │   │
+│                                                       │ Connectors          │   │  Aurora Sink — 5   │   │
+│                                                       │                     │   │  tables)           │   │
+│                                                       └─────────────────────┘   └────────────────────┘   │
+└────────────────────────────────────────────────────────────────────────────────────────────────────────────┘
+```
 
-**Three-tier network design:**
+---
+
+## Data Flow
+
+### CDC Pipeline (left to right)
 
 ```
-Internet
-   │
-   ▼
-┌──────────────────────────────────────────────────────────────────────────┐
-│  VPC  10.0.0.0/16                                            us-west-1   │
-│                                                                          │
-│  ┌──────────────────────┐  ┌──────────────────────────────────────────┐  │
-│  │  PUBLIC SUBNET       │  │  PRIVATE APP SUBNET                      │  │
-│  │  10.0.1.0/24 (AZ-a)  │  │  10.0.11.0/24 (AZ-a)                    │  │
-│  │  10.0.2.0/24 (AZ-c)  │  │  10.0.12.0/24 (AZ-c)                    │  │
-│  │                      │  │                                          │  │
-│  │  • ALB (internet)    │  │  • EKS Control Plane (private API)       │  │
-│  │  • NAT GW × 2        │  │  • EKS Worker Nodes                      │  │
-│  │  • Internet Gateway  │  │  • MSK Kafka Brokers × 2                 │  │
-│  │                      │  │  • Debezium CDC (EKS pod)                │  │
-│  └──────────────────────┘  └──────────────────────────────────────────┘  │
-│                                                                          │
-│  ┌─────────────────────────────────────────────────────────────────────┐ │
-│  │  PRIVATE DB SUBNET  (no internet route — fully sealed)              │ │
-│  │  10.0.21.0/24 (AZ-a)    10.0.22.0/24 (AZ-c)                        │ │
-│  │                                                                     │ │
-│  │  • Aurora PostgreSQL (writer + readers, auto-scale)                 │ │
-│  │  • RDS PostgreSQL  (Multi-AZ, CDC source for Debezium)              │ │
-│  │  • ElastiCache Redis  (Primary + Replica, Multi-AZ failover)        │ │
-│  └─────────────────────────────────────────────────────────────────────┘ │
-└──────────────────────────────────────────────────────────────────────────┘
+Application Layer            CDC Source                Event Streaming            Consumer Targets
+─────────────────────        ─────────────────         ─────────────────────      ─────────────────────────────
+EC2 (Txn Simulator)   ──▶    Aurora Source     ──▶    Debezium → MSK      ──┬──▶ ElastiCache Redis (cache)
+   writes rows               (logical repl.)          Kafka 3.9.x            │
+                                                      Topics:                ├──▶ Aurora Sink — student_enrollment
+                                                      caltech_poc_10.*       ├──▶ Aurora Sink — student_attendance
+                                                                             ├──▶ Aurora Sink — student_lms
+                                                                             ├──▶ Aurora Sink — section_enrollments
+                                                                             └──▶ Aurora Sink — student_term_log
 ```
+
+### Sink connectors (one per table)
+
+| Connector | Source topic | Sink table |
+|---|---|---|
+| `postgres-sink-connector-student-enrollment` | `caltech_poc_10.public.student_enrollment` | `student_enrollment` |
+| `postgres-sink-connector-student-attendance` | `caltech_poc_10.public.student_attendance` | `student_attendance` |
+| `postgres-sink-connector-student-lms` | `caltech_poc_10.public.student_lms` | `student_lms` |
+| `postgres-sink-connector-section-enrollments` | `caltech_poc_10.public.section_enrollments` | `section_enrollments` |
+| `postgres-sink-connector-student-term-log` | `caltech_poc_10.public.student_term_log` | `student_term_log` |
+
+---
+
+## Module Inventory
+
+All modules live under [`prod-stack/modules/`](./prod-stack/modules/). They are wired together in [`prod-stack/main.tf`](./prod-stack/main.tf).
+
+| # | Module | Purpose | Key resources |
+|---|---|---|---|
+| 1 | [`kms`](./prod-stack/modules/kms/) | KMS keys for envelope encryption | 5 keys: aurora, secrets, s3, ebs, redis |
+| 2 | [`security_groups`](./prod-stack/modules/security_groups/) | Least-privilege SGs per service | EC2, MSK, MSK Connect, Aurora Source/Sink, ElastiCache |
+| 3 | [`vpc_endpoints`](./prod-stack/modules/vpc_endpoints/) | Interface + Gateway endpoints | SSM, SSMMessages, EC2Messages, S3 Gateway |
+| 4 | [`s3`](./prod-stack/modules/s3/) | Buckets with lifecycle policies | `plugins`, `data-lake`, `logs` |
+| 5 | [`secrets`](./prod-stack/modules/secrets/) | Auto-generated DB passwords | Aurora source + sink master credentials |
+| 6 | [`iam`](./prod-stack/modules/iam/) | Roles and policies | EC2 instance profile, MSK Connect execution role |
+| 7 | [`ec2`](./prod-stack/modules/ec2/) | Application server template | App + pg_sink + redis_sink (3 instances) |
+| 8 | [`aurora_source`](./prod-stack/modules/aurora_source/) | CDC source — Serverless v2 | PostgreSQL 16.x with `rds.logical_replication=1` |
+| 9 | [`aurora_source_limitless`](./prod-stack/modules/aurora_source_limitless/) | CDC source — Limitless variant | PostgreSQL 16.13-limitless + shard group (24–384 ACU) |
+| 10 | [`aurora_sink`](./prod-stack/modules/aurora_sink/) | JDBC sink target | Serverless v2 — receives Kafka events |
+| 11 | [`msk`](./prod-stack/modules/msk/) | Kafka cluster | Provisioned MSK, kafka.m5.2xlarge × 2 brokers |
+| 12 | [`msk_connect`](./prod-stack/modules/msk_connect/) | Generic connector | Reused 6× — 1 Debezium source + 5 JDBC sinks |
+| 13 | [`elasticache`](./prod-stack/modules/elasticache/) | Redis cache | Serverless cache (Redis 7+) |
 
 ---
 
@@ -86,588 +107,250 @@ Internet
 ```
 CaliforniaProject/
 │
-├── versions.tf          # Required provider versions (aws ~>5, tls, kubernetes, random)
-├── backend.tf           # Remote state: S3 bucket + DynamoDB lock table
-├── providers.tf         # AWS + Kubernetes provider configuration
-├── variables.tf         # All root-level input variables with descriptions & defaults
-├── terraform.tfvars     # Production values (override defaults here)
-├── data.tf              # Data sources (account ID, current region)
-├── main.tf              # Root: instantiates all 7 modules and wires them together
-├── outputs.tf           # Root-level outputs (endpoints, ARNs, etc.)
-├── ARCHITECTURE.md      # Visual diagrams (Mermaid) — this file
-├── README.md            # Full project documentation — this file
+├── README.md                       # This file — high-level overview
+├── ARCHITECTURE.md                 # Mermaid diagrams + detailed network view
+├── DOCUMENTATION.md                # Full deployment + operations reference
+├── MSK-CONNECT-CONFIG.md           # Connector config Q&A for the app team
 │
-└── modules/
-    ├── vpc/             # Module 1 — VPC, subnets, routing, security groups
-    │   ├── main.tf
-    │   ├── variables.tf
-    │   └── outputs.tf
+└── prod-stack/
+    ├── README.md                   # Deployment guide (deployment phases, commands)
+    ├── versions.tf                 # Required providers (aws ≥ 5.95, random, null)
+    ├── providers.tf                # AWS provider with default tags
+    ├── backend.tf                  # S3 + DynamoDB lock backend
+    ├── backend.hcl                 # Backend config (separate from code)
+    ├── variables.tf                # All input variables with defaults
+    ├── terraform.tfvars            # Caltech-specific values
+    ├── data.tf                     # aws_caller_identity, route tables lookup
+    ├── main.tf                     # All module instantiations (sequenced)
+    ├── outputs.tf                  # Endpoint + ARN outputs
     │
-    ├── alb/             # Module 2 — Application Load Balancer
-    │   ├── main.tf
-    │   ├── variables.tf
-    │   └── outputs.tf
+    ├── scripts/
+    │   └── init.sh                 # Bootstrap state bucket + DynamoDB, run init
     │
-    ├── eks/             # Module 3 — EKS cluster, Fargate profiles, OIDC/IRSA, SGP
-    │   ├── main.tf
-    │   ├── variables.tf
-    │   └── outputs.tf
-    │
-    ├── msk/             # Module 4 — MSK Serverless (SASL/IAM only, no brokers to configure)
-    │   ├── main.tf
-    │   ├── variables.tf
-    │   └── outputs.tf
-    │
-    ├── aurora/          # Module 5 — Aurora Serverless v2, ACU scaling, Secrets Manager
-    │   ├── main.tf
-    │   ├── variables.tf
-    │   └── outputs.tf
-    │
-    ├── rds/             # Module 6 — Aurora Serverless v2 CDC source (logical replication)
-    │   ├── main.tf
-    │   ├── variables.tf
-    │   └── outputs.tf
-    │
-    └── elasticache/     # Module 7 — ElastiCache Serverless Redis, CloudWatch alarms
-        ├── main.tf
-        ├── variables.tf
-        └── outputs.tf
+    └── modules/                    # 13 modules — one folder each
+        ├── aurora_sink/
+        ├── aurora_source/
+        ├── aurora_source_limitless/
+        ├── ec2/
+        ├── elasticache/
+        ├── iam/
+        ├── kms/
+        ├── msk/
+        ├── msk_connect/
+        ├── s3/
+        ├── secrets/
+        ├── security_groups/
+        └── vpc_endpoints/
 ```
 
 ---
 
-## Terraform Modules
+## Network Topology
 
-### Module 1 — `vpc`
-
-**What it creates:**
-- 1 VPC with DNS resolution enabled
-- 2 Public subnets (1 per AZ) — tagged for AWS Load Balancer Controller
-- 2 Private App subnets (1 per AZ) — tagged for internal ELB
-- 2 Private DB subnets (1 per AZ) — no internet route
-- Internet Gateway (for public subnets)
-- 2 NAT Gateways (1 per AZ — eliminates cross-AZ NAT traffic for HA)
-- Route tables: public → IGW, private-app → NAT, private-db → no route
-- RDS DB Subnet Group (shared by Aurora + RDS)
-- ElastiCache Subnet Group
-- VPC Flow Logs → CloudWatch (90-day retention)
-- 6 Security Groups (ALB, EKS cluster, EKS nodes, MSK, RDS, Aurora, ElastiCache)
-
-**Why it is the foundation:** All other modules receive their VPC IDs, subnet IDs, and security group IDs as outputs from this module.
-
----
-
-### Module 2 — `alb`
-
-**What it creates:**
-- Internet-facing Application Load Balancer in public subnets
-- S3 bucket for ALB access logs (versioned, encrypted)
-- HTTP listener (port 80) → redirects to HTTPS (HTTP 301)
-- HTTPS listener (port 443) — uses TLS policy `ELBSecurityPolicy-TLS13-1-2-2021-06` (TLS 1.3)
-- Default target group (IP type — works with EKS pods via Load Balancer Controller)
-- Health check configuration (fully configurable via variables)
-- Deletion protection enabled
-
-**Traffic path:** `Internet → ALB → EKS Ingress → Kubernetes Service → Pod`
-
----
-
-### Module 3 — `eks`
-
-**What it creates:**
-- EKS Cluster (Kubernetes 1.29, private API endpoint only)
-- KMS key for Kubernetes secrets envelope encryption
-- IAM role for the cluster control plane
-- CloudWatch Log Group for all 5 control-plane log types
-- OIDC Provider for IRSA (IAM Roles for Service Accounts)
-- IAM role for worker nodes (with SSM access for shell-less debugging)
-- Multiple Managed Node Groups (fully configurable — instance type, size, taints, labels)
-- EKS Add-ons: `vpc-cni` (with `ENABLE_POD_ENI=true` for Security Groups for Pods), `kube-proxy`, `coredns`
-
-**Key production features — Fargate specific:**
-- **No EC2 worker nodes** — AWS provisions and manages the underlying compute per pod
-- **Security Groups for Pods (SGP)** — `ENABLE_POD_ENI=true` on vpc-cni; pods carry `eks-pods-sg` directly
-- **No EBS CSI driver** — EBS is not supported on Fargate; use EFS or S3 CSI for persistent storage
-- IRSA enabled — pods get scoped IAM roles via OIDC; Debezium pods use IRSA for MSK SASL/IAM
-
----
-
-### Module 4 — `msk`
-
-**What it creates:**
-- **MSK Serverless cluster** (`aws_msk_serverless_cluster`)
-- VPC placement (subnet IDs + security group IDs)
-- SASL/IAM client authentication (the only supported auth method for MSK Serverless)
-
-**What MSK Serverless manages automatically (not configurable):**
-- Broker provisioning, scaling, and replication
-- Storage (no EBS; fully managed by AWS)
-- Kafka version upgrades
-- Encryption at rest and in transit (always on, AWS-managed keys)
-- Cross-AZ broker placement for HA
-
-**Client configuration for Debezium / application pods:**
-- Bootstrap endpoint: `bootstrap_brokers_sasl_iam` output (sensitive)
-- Port: `9098` (SASL/IAM only — no 9092/9094/9096)
-- Authentication: AWS Signature v4 via IRSA on EKS Fargate pods
-
-**Purpose in CDC pipeline:** MSK Serverless is the central event bus. Debezium writes CDC events to Kafka topics. Kafka sink connectors stream data to Aurora and Redis.
-
----
-
-### Module 5 — `aurora`
-
-**What it creates:**
-- **Aurora PostgreSQL Serverless v2 cluster** (`engine_mode = "provisioned"` + `serverlessv2_scaling_configuration`)
-- KMS key for storage encryption
-- Secrets Manager secret for master credentials (password auto-generated, never stored in code)
-- Custom cluster and instance parameter groups (family derived from `engine_version`)
-- `instance_count` cluster instances with `instance_class = "db.serverless"` (scales between min/max ACUs)
-- IAM role for enhanced monitoring (60-second granularity)
-- Application Auto Scaling for read replicas (CPU-based, configurable target/min/max)
-- Performance Insights enabled
-
-**Aurora Serverless v2 scaling:** Each instance scales between `min_capacity_units` (default 0.5 ACU) and `max_capacity_units` (default 64 ACU). 1 ACU ≈ 2 GiB RAM. Scaling is online with no downtime.
-
-**Role:** Primary transactional database for application workloads. Receives replicated data from Kafka sink connectors.
-
----
-
-### Module 6 — `rds`
-
-**What it creates:**
-- **Aurora PostgreSQL Serverless v2 cluster** (CDC source — `engine_mode = "provisioned"` + `serverlessv2_scaling_configuration`)
-- KMS key for storage encryption
-- Secrets Manager secret for master credentials
-- **Cluster parameter group — logical replication for Debezium CDC:**
-  - `rds.logical_replication = 1` — enables WAL logical decoding
-  - `max_wal_senders = 10` — up to 10 replication connections
-  - `max_replication_slots = 10` — up to 10 concurrent Debezium slots
-  - `wal_sender_timeout = 0` — disables WAL sender timeout (required for Debezium)
-  - `rds.force_ssl = 1` — enforces TLS for all connections
-- Instance parameter group (`log_connections`, `log_disconnections`)
-- `instance_count` instances with `instance_class = "db.serverless"` — scales between 0.5–32 ACUs
-- Enhanced monitoring, Performance Insights, deletion protection, automated backups
-
-**Role:** CDC source database. Debezium captures row-level changes via PostgreSQL logical replication and streams them as events to MSK Serverless. Aurora Serverless v2 is used here so the CDC source also scales automatically with capture load.
-
----
-
-### Module 7 — `elasticache`
-
-**What it creates:**
-- **ElastiCache Serverless cache** (`aws_elasticache_serverless_cache`, Redis engine)
-- KMS key for at-rest encryption
-- Capacity limits: `max_data_storage_gb` / `min_data_storage_gb` (GB) + `max_ecpu_per_second` / `min_ecpu_per_second` (ECPU/s)
-- Automated daily snapshots (configurable `daily_snapshot_time`)
-- CloudWatch alarms: `ElastiCacheProcessingUnits` > threshold, `BytesUsedForCache` > threshold
-
-**What ElastiCache Serverless manages automatically:**
-- Node type selection and scaling (no `node_type` or `num_cache_clusters`)
-- High availability across AZs (built-in)
-- Encryption in transit (always-on TLS)
-- No parameter group, no auth token required
-
-**Role:** High-speed caching layer. Receives hot data from Kafka sink connectors. Serves read-heavy requests with sub-millisecond latency. Scales storage and compute independently.
-
----
-
-## How Data Flows
-
-### User Request Flow
 ```
-User → HTTPS:443 → ALB
-     → EKS Ingress Controller (Fargate pod)
-     → Application Pod (EKS Fargate)
-     → Aurora Serverless v2 (writes) / ElastiCache Serverless Redis (reads/cache)
+VPC vpc-0ed44b92f11b73815  (existing — not created by Terraform)
+│
+├── Public subnet (10.145.x.0/24)
+│   ├── EC2 app server (no public IP — SSM access only)
+│   ├── EC2 pg_sink
+│   ├── EC2 redis_sink
+│   └── VPC interface endpoints (SSM, SSMMessages, EC2Messages)
+│
+└── Private subnets (× 3 — one per AZ)
+    ├── Aurora Source (Serverless v2)
+    ├── Aurora Source Limitless (sharded)
+    ├── Aurora Sink (Serverless v2)
+    ├── MSK Provisioned (2 brokers, kafka.m5.2xlarge)
+    ├── MSK Connect workers (Debezium + 5 JDBC sinks)
+    └── ElastiCache Serverless Redis
 ```
 
-### CDC (Change Data Capture) Flow
-```
-Aurora Serverless v2 (CDC source)
-  └─ WAL Logical Replication Slot (rds.logical_replication=1)
-       └─ Debezium Connector (EKS Fargate pod, debezium namespace)
-              │ SASL/IAM → MSK Serverless (port 9098)
-              └─ Produce change events → MSK Serverless Kafka topic (per table)
-                    ├─ JDBC Sink Connector → Aurora Serverless v2 primary
-                    └─ Redis Sink Connector → ElastiCache Serverless Redis
-```
-
-**Why CDC?** CDC allows near-real-time data synchronisation between the source database and Aurora/Redis consumers without polling, reducing database load and latency.
+**External CIDR allowed for VM access:** `10.145.0.0/24` — used in security group rules for PostgreSQL (5432) and Redis (6379) from on-prem VMs.
 
 ---
 
-## Security Design
+## Security Model
 
-### Encryption at Rest
-| Service               | Mechanism                                   |
-|-----------------------|---------------------------------------------|
-| EKS Secrets           | KMS (dedicated key per cluster)             |
-| MSK Serverless        | AWS-managed (always on, not configurable)   |
-| Aurora Serverless v2  | KMS (dedicated key)                         |
-| RDS/CDC Serverless v2 | KMS (dedicated key)                         |
-| ElastiCache Serverless| KMS (dedicated key)                         |
-| S3 buckets            | SSE-S3 (ALB logs)                           |
-| Secrets Manager       | KMS (reuses service KMS key)                |
+### Encryption
 
-### Encryption in Transit
-| Connection                           | Protocol                                  |
-|--------------------------------------|-------------------------------------------|
-| Internet → ALB                       | TLS 1.3                                   |
-| ALB → EKS Fargate pods               | HTTP (within VPC, SG-controlled)          |
-| EKS Fargate → Aurora/RDS             | SSL enforced via `rds.force_ssl=1`        |
-| EKS Fargate → ElastiCache Serverless | TLS (always-on, not configurable)         |
-| EKS Fargate → MSK Serverless         | TLS + SASL/IAM (AWS Sig v4, port 9098)    |
+| Service | At rest | In transit |
+|---|---|---|
+| Aurora Source / Sink / Limitless | KMS (aurora key) | TLS (`rds.force_ssl=1`) |
+| MSK Provisioned | KMS (secrets key) | TLS — broker↔client, in-cluster |
+| ElastiCache | KMS (redis key) | TLS (always-on) |
+| S3 buckets | KMS (s3 key) | TLS |
+| EBS volumes | KMS (ebs key) | n/a |
+| Secrets Manager | KMS (secrets key) | TLS |
 
-### Credential Management
-- **No passwords in code.** All passwords are auto-generated by Terraform's `random_password` and stored exclusively in AWS Secrets Manager.
-- **No static AWS keys in pods.** IRSA gives pods scoped IAM permissions. Debezium uses IRSA to authenticate to MSK Serverless via SASL/IAM without any access key.
-- **No Redis auth token.** ElastiCache Serverless access is controlled by VPC security groups only — no auth token needed.
+### Authentication
 
-### Network Isolation
-- DB subnet has **no route to Internet** — completely isolated from external traffic.
-- Security groups use CIDR-based inbound rules (app subnet CIDRs `10.0.11.0/24`, `10.0.12.0/24`) for DB/cache/MSK because Fargate pods carry their own SG via SGP.
-- EKS Fargate pods carry `eks-pods-sg` via **Security Groups for Pods** (`ENABLE_POD_ENI=true`) — pod-level network policy without EC2 node involvement.
-- EKS API server endpoint is **private only** (`endpoint_public_access = false`).
-- VPC Flow Logs capture all traffic for audit and incident response.
+| Path | Method |
+|---|---|
+| EC2 → MSK | SASL/SCRAM (port 9096) with Secrets Manager-stored credentials |
+| MSK Connect workers → MSK | SASL/IAM (port 9098) via execution role |
+| EC2 → Aurora (any) | PostgreSQL password from Secrets Manager |
+| MSK Connect → Aurora Source | PostgreSQL password from Secrets Manager (Debezium config) |
+| MSK Connect → Aurora Sink | PostgreSQL password from Secrets Manager (JDBC config) |
+| App engineer → EC2 | AWS SSM Session Manager (no SSH keys, no public IP) |
 
----
+### Credential handling
 
-## Production Best Practices Applied
+- **No plain-text passwords in code or tfvars.** Aurora master passwords are auto-generated by `random_password` and stored only in Secrets Manager.
+- **MSK SCRAM secret** is auto-generated and associated with the cluster via `aws_msk_scram_secret_association`.
+- **MSK Connect execution role** has scoped permissions: read SCRAM secret, write CloudWatch logs, connect to MSK, read S3 plugin bucket.
 
-| Practice | Implementation |
-|----------|----------------|
-| **Remote state** | S3 bucket (versioned + encrypted) + DynamoDB lock |
-| **Modular design** | 7 reusable modules — each independently testable and deployable |
-| **No hardcoded values** | Every configurable value is a variable with a sensible default |
-| **KMS encryption** | Dedicated KMS key per service with automatic key rotation |
-| **Secrets rotation** | Secrets Manager stores all credentials; passwords never in `.tf` or `.tfvars` |
-| **Multi-AZ HA** | Aurora Serverless v2 multi-instance, ElastiCache Serverless (built-in HA), MSK Serverless (AWS-managed), 2 NAT GWs |
-| **No node management** | EKS Fargate — no worker node patching, AMI updates, or right-sizing |
-| **IRSA** | OIDC provider attached; pods get IAM roles — no static keys |
-| **Enhanced monitoring** | RDS/Aurora enhanced monitoring at 60s intervals + Performance Insights |
-| **Deletion protection** | Enabled on ALB, Aurora, RDS |
-| **Final snapshots** | Configured for Aurora and RDS before deletion |
-| **VPC Flow Logs** | Captures all VPC traffic for audit and SOC 2 compliance |
-| **Resource tagging** | All resources tagged with `Environment`, `Project`, `ManagedBy`, `Module` |
-| **TLS 1.3** | ALB HTTPS listener uses `ELBSecurityPolicy-TLS13-1-2-2021-06` |
+### Network isolation
+
+- Aurora and ElastiCache live in **private subnets with no internet route**.
+- EC2 instances are placed in the public subnet but have **no public IP** — accessed via SSM Session Manager through interface VPC endpoints.
+- Aurora SG inbound is restricted to EC2 SG, MSK Connect SG, and the VM CIDR (`10.145.0.0/24`).
 
 ---
 
-## Prerequisites
+## Deployment
 
-Before running Terraform, ensure the following are in place:
+### Prerequisites
 
-### 1. Terraform CLI
+| Tool | Min version |
+|---|---|
+| Terraform | 1.5.0 |
+| AWS CLI | 2.x |
+| AWS credentials | IAM user/role with admin or scoped permissions on us-west-2 |
+| Existing VPC + subnets | Set IDs in `terraform.tfvars` |
+
+### One-time bootstrap
+
+The init script creates the S3 state bucket and DynamoDB lock table, then runs `terraform init` and `terraform validate`:
 
 ```bash
-terraform version  # Requires >= 1.5.0
+cd prod-stack/
+chmod +x scripts/init.sh
+./scripts/init.sh --profile caltect-account
 ```
 
-### 2. AWS CLI + Credentials
+### Deployment sequence (6 phases, left to right)
 
 ```bash
-aws configure  # Or use IAM role / environment variables
-aws sts get-caller-identity  # Verify correct account
-```
+# Phase 1 — Foundation
+terraform apply -target=module.kms
+terraform apply -target=module.security_groups
+terraform apply -target=module.vpc_endpoints
+terraform apply -target=module.s3
+terraform apply -target=module.secrets
+terraform apply -target=module.iam            # uses msk_cluster_arn="*" initially
 
-The deploying IAM role/user needs these minimum policies:
-- `AdministratorAccess` (for initial setup)  
-- OR granular: EC2, VPC, EKS, RDS, ElastiCache, MSK, KMS, SecretsManager, IAM, S3, CloudWatch, AppAutoScaling
+# Phase 2 — App server (leftmost in diagram)
+terraform apply -target=module.ec2
+terraform apply -target=module.ec2_pg_sink
+terraform apply -target=module.ec2_redis_sink
 
-### 3. Create Remote State Backend (One-time)
+# Phase 3 — Source DBs
+terraform apply -target=module.aurora_source
+terraform apply -target=module.aurora_source_limitless
 
-```bash
-# Create S3 bucket for Terraform state
-aws s3api create-bucket \
-  --bucket california-prod-terraform-state \
-  --region us-west-1 \
-  --create-bucket-configuration LocationConstraint=us-west-1
+# Phase 4 — CDC pipeline (Debezium → MSK Connect → Kafka)
+terraform apply -target=module.msk             # ~30–40 min
+# Upload Debezium plugin ZIP to S3:
+# aws s3 cp debezium-connector-postgres-*-plugin.zip \
+#   s3://$(terraform output -raw s3_plugins_bucket)/plugins/ \
+#   --profile caltect-account
+terraform apply -target=module.msk_connect     # source connector
 
-# Enable versioning
-aws s3api put-bucket-versioning \
-  --bucket california-prod-terraform-state \
-  --versioning-configuration Status=Enabled
+# Phase 5 — Consumer targets
+terraform apply -target=module.elasticache
+terraform apply -target=module.aurora_sink
+terraform apply -target=module.msk_connect_sink
+terraform apply -target=module.msk_connect_sink_attendance
+terraform apply -target=module.msk_connect_sink_lms
+terraform apply -target=module.msk_connect_sink_section_enrollments
+terraform apply -target=module.msk_connect_sink_term_log
 
-# Enable server-side encryption
-aws s3api put-bucket-encryption \
-  --bucket california-prod-terraform-state \
-  --server-side-encryption-configuration \
-    '{"Rules":[{"ApplyServerSideEncryptionByDefault":{"SSEAlgorithm":"AES256"}}]}'
-
-# Create DynamoDB table for state locking
-aws dynamodb create-table \
-  --table-name california-prod-terraform-lock \
-  --attribute-definitions AttributeName=LockID,AttributeType=S \
-  --key-schema AttributeName=LockID,KeyType=HASH \
-  --billing-mode PAY_PER_REQUEST \
-  --region us-west-1
-```
-
-### 4. ACM Certificate (Optional — for HTTPS)
-
-If you want HTTPS on the ALB, request a certificate in ACM and set in `terraform.tfvars`:
-```hcl
-alb_ssl_certificate_arn = "arn:aws:acm:us-west-1:YOUR_ACCOUNT_ID:certificate/CERT_ID"
+# Phase 6 — Final pass (tighten IAM)
+terraform apply                                # IAM MSK policy from * → exact cluster ARN
 ```
 
 ---
 
-## How to Deploy
+## Operations
+
+### SSM into an EC2 instance
 
 ```bash
-# 1. Clone the repository and navigate to project root
-cd CaliforniaProject/
+# Get the instance ID
+terraform output ec2_instance_id
 
-# 2. Review and customise settings
-vi terraform.tfvars
-
-# 3. Initialise — downloads providers and sets up backend
-terraform init
-
-# 4. Review what will be created (ALWAYS do this first)
-terraform plan -out=tfplan
-
-# 5. Review the plan carefully, then apply
-terraform apply tfplan
+# Open SSM session (no SSH needed)
+$(terraform output -raw ssm_connect_command)
 ```
 
-### Expected apply time: ~20–30 minutes
-(EKS cluster takes ~10 min, Aurora takes ~5 min, MSK takes ~10 min)
-
-### Get outputs after apply
+### Get a database password
 
 ```bash
-# All outputs
-terraform output
-
-# Get EKS kubeconfig
-aws eks update-kubeconfig \
-  --region us-west-1 \
-  --name $(terraform output -raw eks_cluster_name)
-
-# Get Aurora endpoint
-terraform output aurora_cluster_endpoint
-
-# Get Redis endpoint
-terraform output redis_primary_endpoint
+SECRET_ARN=$(terraform output -raw aurora_source_secret_arn)
+aws secretsmanager get-secret-value \
+  --secret-id "$SECRET_ARN" \
+  --region us-west-2 \
+  --query SecretString --output text | jq -r '.password'
 ```
 
----
-
-## How to Destroy
-
-> ⚠️ **WARNING:** Destroying production infrastructure is irreversible. Ensure backups exist.
+### Check MSK Connect connector status
 
 ```bash
-# Step 1 — Disable deletion protection first (required for ALB, Aurora, RDS)
-# Edit terraform.tfvars:
-#   alb_deletion_protection = false
-#   aurora_deletion_protection = false   (in module call)
-#   rds_deletion_protection = false      (in module call)
+aws kafkaconnect describe-connector \
+  --connector-arn $(terraform output -raw debezium_connector_arn) \
+  --region us-west-2 \
+  --query "ConnectorState"
+```
 
-terraform apply  # Apply the protection changes
+Possible states: `CREATING` → `RUNNING` (good) or `FAILED`. If `FAILED`, check CloudWatch logs at `/aws/mskconnect/<connector-name>`.
 
-# Step 2 — Destroy
-terraform destroy
+### Aurora Limitless capacity
+
+The Limitless shard group is configured for **24–384 ACUs** (48 GiB to 768 GiB RAM equivalent). It scales horizontally — to change the range:
+
+```bash
+aws rds modify-db-shard-group \
+  --db-shard-group-identifier caltech-poc-aurora-source-limitless-shard \
+  --max-acu 512 \
+  --min-acu 24 \
+  --region us-west-2
 ```
 
 ---
 
-## Module Input Variables Reference
+## Outputs
 
-### `vpc` Module
-
-| Variable | Type | Default | Description |
-|----------|------|---------|-------------|
-| `vpc_cidr` | string | `10.0.0.0/16` | VPC CIDR block |
-| `availability_zones` | list(string) | — | AZs to deploy into |
-| `public_subnet_cidrs` | list(string) | — | Public subnet CIDRs (1 per AZ) |
-| `private_app_subnet_cidrs` | list(string) | — | App subnet CIDRs |
-| `private_db_subnet_cidrs` | list(string) | — | DB subnet CIDRs |
-| `single_nat_gateway` | bool | `false` | Use 1 NAT GW (cost saving, not HA) |
-| `enable_flow_logs` | bool | `true` | Enable VPC flow logs |
-| `flow_log_retention_days` | number | `90` | Flow log CW retention |
-
-### `eks` Module
-
-| Variable | Type | Default | Description |
-|----------|------|---------|-------------|
-| `cluster_version` | string | `1.29` | Kubernetes version |
-| `fargate_profiles` | map(object) | apps, debezium | Fargate profile definitions (namespace selectors) |
-| `cluster_endpoint_public_access` | bool | `false` | Expose API to internet |
-| `enable_irsa` | bool | `true` | Enable OIDC/IRSA |
-| `kms_deletion_window_in_days` | number | `7` | KMS key deletion window |
-| `log_retention_days` | number | `90` | CW control-plane log retention |
-
-### `msk` Module
-
-MSK Serverless has no broker-specific variables. AWS manages all broker scaling, storage, and replication.
-
-| Variable | Type | Description |
-|----------|------|-------------|
-| `cluster_name` | string | MSK Serverless cluster name |
-| `subnet_ids` | list(string) | Private app subnet IDs for broker ENI placement |
-| `security_group_ids` | list(string) | Security group IDs (port 9098 SASL/IAM only) |
-| `tags` | map(string) | Resource tags |
-
-### `aurora` Module
-
-| Variable | Type | Default | Description |
-|----------|------|---------|-------------|
-| `engine_version` | string | `15.4` | PostgreSQL version |
-| `instance_count` | number | `2` | Writer + reader instances (all `db.serverless`) |
-| `min_capacity_units` | number | `0.5` | Min ACUs per instance |
-| `max_capacity_units` | number | `64` | Max ACUs per instance |
-| `autoscaling_min_replicas` | number | `1` | Min read replicas |
-| `autoscaling_max_replicas` | number | `5` | Max read replicas |
-| `autoscaling_cpu_target` | number | `70` | CPU % to scale read replicas |
-| `monitoring_interval` | number | `60` | Enhanced monitoring (seconds) |
-| `performance_insights_retention` | number | `7` | PI retention (days) |
-
-### `rds` Module (Aurora Serverless v2 — CDC Source)
-
-| Variable | Type | Default | Description |
-|----------|------|---------|-------------|
-| `engine_version` | string | `15.4` | Aurora PostgreSQL version |
-| `instance_count` | number | `2` | Writer + reader instances (all `db.serverless`) |
-| `min_capacity_units` | number | `0.5` | Min ACUs per instance |
-| `max_capacity_units` | number | `32` | Max ACUs per instance |
-| `max_wal_senders` | number | `10` | Max WAL sender processes |
-| `max_replication_slots` | number | `10` | Max replication slots |
-| `log_statement` | string | `ddl` | PostgreSQL log_statement level |
-| `monitoring_interval` | number | `60` | Enhanced monitoring (seconds) |
-
-### `elasticache` Module (ElastiCache Serverless)
-
-| Variable | Type | Default | Description |
-|----------|------|---------|-------------|
-| `major_engine_version` | string | `7` | Redis major version |
-| `max_data_storage_gb` | number | `10` | Max data storage (GB) |
-| `min_data_storage_gb` | number | `1` | Min data storage (GB) |
-| `max_ecpu_per_second` | number | `5000` | Max ECPU per second |
-| `min_ecpu_per_second` | number | `1000` | Min ECPU per second |
-| `snapshot_retention_limit` | number | `5` | Daily snapshot retention (days) |
-| `alarm_ecpu_threshold` | number | `4000` | ECPU alarm threshold |
-| `alarm_memory_threshold_gb` | number | `8` | Memory alarm threshold (GB) |
-
-### `alb` Module
-
-| Variable | Type | Default | Description |
-|----------|------|---------|-------------|
-| `ssl_certificate_arn` | string | `""` | ACM cert for HTTPS |
-| `ssl_policy` | string | `ELBSecurityPolicy-TLS13-1-2-2021-06` | TLS cipher policy |
-| `health_check_path` | string | `/healthz` | Health check URL path |
-| `target_group_port` | number | `80` | Backend port |
-| `deregistration_delay` | number | `60` | Drain seconds |
-| `deletion_protection` | bool | `true` | Prevent accidental delete |
-
----
-
-## Outputs Reference
+After a successful full deploy, these outputs are available:
 
 | Output | Description |
-|--------|-------------|
-| `vpc_id` | VPC ID |
-| `eks_cluster_name` | EKS cluster name (use in `aws eks update-kubeconfig`) |
-| `eks_cluster_endpoint` | EKS API server endpoint (sensitive) |
-| `eks_oidc_provider_arn` | OIDC ARN for creating IRSA roles for pods |
-| `alb_dns_name` | ALB DNS — add as CNAME in Route 53 |
-| `msk_bootstrap_brokers_sasl_iam` | MSK Serverless bootstrap servers — SASL/IAM only (sensitive) |
-| `aurora_cluster_endpoint` | Aurora Serverless v2 write endpoint (sensitive) |
-| `aurora_reader_endpoint` | Aurora Serverless v2 read endpoint (sensitive) |
-| `rds_cluster_endpoint` | Aurora Serverless v2 CDC source write endpoint (sensitive) |
-| `rds_reader_endpoint` | Aurora Serverless v2 CDC source read endpoint (sensitive) |
-| `redis_primary_endpoint` | ElastiCache Serverless Redis primary endpoint (sensitive) |
-| `redis_reader_endpoint` | ElastiCache Serverless Redis reader endpoint (sensitive) |
-
----
-
-## Common Operations
-
-### Add a Fargate Profile for a new namespace
-
-```hcl
-# In terraform.tfvars:
-eks_fargate_profiles = {
-  apps     = { selectors = [{ namespace = "default",    labels = {} }] }
-  debezium = { selectors = [{ namespace = "debezium",   labels = {} }] }
-  payments = { selectors = [{ namespace = "payments",   labels = {} }] }  # new
-}
-```
-```bash
-terraform apply
-```
-
-### Scale Aurora Serverless v2 capacity
-
-```hcl
-# In terraform.tfvars:
-aurora_max_capacity_units = 128   # raise from 64
-rds_max_capacity_units    = 64    # raise from 32
-```
-```bash
-terraform apply
-```
-
-### Rotate Database Password
-
-```bash
-# Taint the random_password resource to force a new one
-terraform taint module.aurora.random_password.aurora_master
-terraform apply
-# The new password is automatically stored in Secrets Manager
-```
-
-### Get a database password from Secrets Manager
-
-```bash
-aws secretsmanager get-secret-value \
-  --secret-id california-prod-aurora/master-credentials \
-  --region us-west-1 \
-  --query SecretString --output text | jq .
-
-aws secretsmanager get-secret-value \
-  --secret-id california-prod-postgres/master-credentials \
-  --region us-west-1 \
-  --query SecretString --output text | jq .
-```
-
-### Get MSK Serverless bootstrap endpoint
-
-```bash
-terraform output msk_bootstrap_brokers_sasl_iam
-```
-
-Configure your Kafka client (Debezium / application) with:
-```properties
-bootstrap.servers=<value from above>
-security.protocol=SASL_SSL
-sasl.mechanism=AWS_MSK_IAM
-sasl.jaas.config=software.amazon.msk.auth.iam.IAMLoginModule required;
-sasl.client.callback.handler.class=software.amazon.msk.auth.iam.IAMClientCallbackHandler
-```
-
-### Connect to EKS
-
-```bash
-aws eks update-kubeconfig \
-  --region us-west-1 \
-  --name california-prod-eks
-kubectl get nodes
-```
+|---|---|
+| `ec2_instance_id` / `ec2_public_ip` | App server instance |
+| `ec2_pg_sink_instance_id` / `ec2_redis_sink_instance_id` | Additional sink-side EC2 |
+| `ssm_connect_command*` | One-liner to SSM into each EC2 |
+| `msk_cluster_arn` | MSK Provisioned cluster ARN |
+| `msk_bootstrap_brokers` | SASL/SCRAM bootstrap endpoint (port 9096) |
+| `aurora_source_endpoint` | Aurora Source write endpoint |
+| `aurora_sink_endpoint` | Aurora Sink write endpoint |
+| `aurora_source_secret_arn` / `aurora_sink_secret_arn` | Secrets Manager ARNs |
+| `redis_endpoint` / `redis_port` | ElastiCache Redis endpoint |
+| `s3_plugins_bucket` / `s3_data_lake_bucket` / `s3_logs_bucket` | S3 bucket names |
+| `debezium_plugin_arn` / `debezium_connector_arn` | MSK Connect ARNs |
 
 ---
 
 ## Troubleshooting
 
-| Problem | Likely Cause | Fix |
-|---------|-------------|-----|
-| `terraform init` fails | Backend S3/DynamoDB not created | Run the backend creation commands in Prerequisites |
-| EKS pod stuck `Pending` | No matching Fargate profile for namespace | Add the pod's namespace to `eks_fargate_profiles` in `terraform.tfvars` |
-| Debezium can't connect to Aurora CDC | `rds.logical_replication` not yet active | Parameter group change requires instance reboot — `aws rds reboot-db-instance --db-instance-identifier <id>` |
-| Debezium MSK auth error | IRSA not configured on Fargate pod | Ensure Debezium service account has IRSA IAM role with MSK `kafka-cluster:*` permissions |
-| Kafka producer/consumer error | Wrong port or auth method | MSK Serverless uses port `9098` with SASL/IAM only — no port 9092/9094/9096 |
-| ALB returning 502 | Fargate pod not healthy | Check `/healthz` endpoint; verify `eks-pods-sg` allows ALB ingress on ephemeral port range |
-| Aurora not scaling | ACU ceiling too low | Raise `aurora_max_capacity_units` or `rds_max_capacity_units` in `terraform.tfvars` |
-| `Error acquiring lock` | Another `terraform apply` is running | Check DynamoDB `california-prod-terraform-lock` for stale lock |
+| Symptom | Likely cause | Fix |
+|---|---|---|
+| `BrokerUnreachable` on connector creation | MSK SG missing inbound 9098 from MSK Connect SG | Check `terraform apply -target=module.security_groups` succeeded |
+| `ConnectorNotReady: 2 failed tasks` (sink) | Aurora Sink SG missing 5432 from MSK Connect SG | Re-apply security groups; verify rule via AWS console |
+| `Aurora Limitless doesn't support engine modes` | AWS provider sends `engine_mode="provisioned"` even for Limitless | Module uses `null_resource` + AWS CLI to bypass — see [`aurora_source_limitless/main.tf`](./prod-stack/modules/aurora_source_limitless/main.tf) |
+| `InvalidPermission.Duplicate` on SG apply | Rule was manually added in AWS console before Terraform | Either delete the manual rule, or remove it from Terraform code |
+| `UNKNOWN_TOPIC_OR_PARTITION` from Kafka client | MSK broker config missing `auto.create.topics.enable=true` | Already set in `modules/msk/main.tf` — verify cluster has the custom config attached |
+| `JsonConverter requires schema and payload` | Sink connector has `schemas.enable=true` but source produces schema-less JSON | Module is configured with `converter_schemas_enabled = false` to match source |
+| Plan keeps wanting to delete an external resource | Resource was manually added or by another stack | `terraform state rm <addr>` to remove from state without touching AWS |
+| `Error acquiring lock` | Another apply is in progress, or stale lock | Check the DynamoDB lock table; clear stale entries carefully |
+
+---
+
+**Maintained by:** Platform Team (panicleTech) · **For:** Caltech / TCS POC

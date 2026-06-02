@@ -84,9 +84,15 @@ variable "redis_port" {
 # ---- EC2 --------------------------------------------------------------------
 
 variable "ec2_instance_type" {
-  description = "EC2 instance type for the application server"
+  description = "EC2 instance type used by the sink consumer servers (pg_sink, redis_sink)"
   type        = string
   default     = "t3.large"
+}
+
+variable "ec2_app_server_instance_type" {
+  description = "EC2 instance type for the primary application server (transaction simulator) — typically larger than the sink consumers"
+  type        = string
+  default     = "m6i.2xlarge"
 }
 
 variable "ec2_root_volume_gb" {

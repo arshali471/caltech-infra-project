@@ -287,7 +287,7 @@ module "ec2" {
   name   = local.name
 
   ami_id                = var.ec2_ami_id
-  instance_type         = var.ec2_instance_type
+  instance_type         = var.ec2_app_server_instance_type
   subnet_id             = var.public_subnet_ids[0]
   key_pair_name         = var.ec2_key_pair_name
   security_group_id     = module.security_groups.ec2_sg_id

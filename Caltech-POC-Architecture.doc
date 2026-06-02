@@ -1,0 +1,641 @@
+<html xmlns:o="urn:schemas-microsoft-com:office:office"
+      xmlns:w="urn:schemas-microsoft-com:office:word"
+      xmlns="http://www.w3.org/TR/REC-html40">
+<head>
+<meta charset="UTF-8">
+<meta name="ProgId" content="Word.Document">
+<meta name="Generator" content="Microsoft Word">
+<meta name="Originator" content="Microsoft Word">
+<title>Caltech POC — AWS CDC Pipeline Architecture</title>
+<!--[if gte mso 9]>
+<xml>
+  <w:WordDocument>
+    <w:View>Print</w:View>
+    <w:Zoom>100</w:Zoom>
+    <w:DoNotOptimizeForBrowser/>
+  </w:WordDocument>
+</xml>
+<![endif]-->
+<style>
+@page WordSection1 {
+  size: 14.0in 8.5in;
+  margin: 0.5in 0.5in 0.5in 0.5in;
+  mso-page-orientation: landscape;
+}
+@page WordSection2 {
+  size: 8.5in 11.0in;
+  margin: 0.75in 0.75in 0.75in 0.75in;
+}
+div.WordSection1 { page: WordSection1; }
+div.WordSection2 { page: WordSection2; }
+
+body {
+  font-family: Calibri, Arial, sans-serif;
+  font-size: 11pt;
+  color: #1a1a1a;
+  line-height: 1.4;
+}
+
+h1 {
+  font-family: Calibri, Arial, sans-serif;
+  font-size: 28pt;
+  font-weight: bold;
+  color: #1f4e79;
+  margin-top: 0;
+  margin-bottom: 6pt;
+  page-break-before: always;
+}
+h1.cover {
+  font-size: 36pt;
+  text-align: center;
+  margin-top: 2in;
+  page-break-before: avoid;
+}
+h2 {
+  font-family: Calibri, Arial, sans-serif;
+  font-size: 18pt;
+  font-weight: bold;
+  color: #2e75b6;
+  margin-top: 18pt;
+  margin-bottom: 6pt;
+  border-bottom: 2pt solid #2e75b6;
+  padding-bottom: 2pt;
+}
+h3 {
+  font-family: Calibri, Arial, sans-serif;
+  font-size: 14pt;
+  font-weight: bold;
+  color: #2e75b6;
+  margin-top: 12pt;
+  margin-bottom: 4pt;
+}
+h4 {
+  font-family: Calibri, Arial, sans-serif;
+  font-size: 12pt;
+  font-weight: bold;
+  color: #404040;
+  margin-top: 10pt;
+  margin-bottom: 4pt;
+}
+p { margin-top: 0; margin-bottom: 6pt; }
+ul, ol { margin-top: 0; margin-bottom: 8pt; }
+li { margin-bottom: 3pt; }
+
+table {
+  border-collapse: collapse;
+  width: 100%;
+  margin-top: 6pt;
+  margin-bottom: 12pt;
+  font-size: 10pt;
+}
+th {
+  background: #1f4e79;
+  color: #ffffff;
+  font-weight: bold;
+  text-align: left;
+  padding: 6pt 8pt;
+  border: 1pt solid #1f4e79;
+}
+td {
+  padding: 5pt 8pt;
+  border: 1pt solid #bfbfbf;
+  vertical-align: top;
+}
+tr:nth-child(even) td { background: #f2f2f2; }
+
+code {
+  font-family: Consolas, "Courier New", monospace;
+  font-size: 9.5pt;
+  background: #f4f4f4;
+  padding: 1pt 3pt;
+  border: 0.5pt solid #d0d0d0;
+}
+pre {
+  font-family: "Courier New", Consolas, monospace;
+  font-size: 8pt;
+  line-height: 1.15;
+  background: #f8f8f8;
+  padding: 10pt;
+  border: 0.75pt solid #c0c0c0;
+  white-space: pre;
+  margin-bottom: 12pt;
+  color: #1a1a1a;
+  overflow: auto;
+}
+pre.diagram {
+  font-size: 7.5pt;
+  line-height: 1.05;
+  background: #ffffff;
+  border: 1pt solid #1f4e79;
+  padding: 14pt 16pt;
+  color: #0d2240;
+}
+
+.cover-meta {
+  text-align: center;
+  font-size: 13pt;
+  color: #595959;
+  margin-top: 0.4in;
+}
+.cover-meta strong { color: #1f4e79; }
+.cover-footer {
+  text-align: center;
+  font-size: 10pt;
+  color: #808080;
+  margin-top: 2in;
+}
+
+.callout {
+  background: #fff4cf;
+  border-left: 4pt solid #ffc000;
+  padding: 8pt 12pt;
+  margin: 10pt 0;
+  font-size: 10pt;
+}
+.callout-info {
+  background: #e7f1fa;
+  border-left: 4pt solid #2e75b6;
+  padding: 8pt 12pt;
+  margin: 10pt 0;
+  font-size: 10pt;
+}
+</style>
+</head>
+<body lang="EN-US">
+
+<!-- ========================================================================
+     COVER PAGE
+     ======================================================================== -->
+<div class="WordSection2">
+
+<div style="margin-top:1.5in;text-align:center;">
+  <div style="font-size:14pt;color:#595959;letter-spacing:4pt;">SOLUTION ARCHITECTURE DOCUMENT</div>
+</div>
+
+<h1 class="cover">Caltech POC<br/>AWS CDC Pipeline</h1>
+
+<div class="cover-meta">
+  Change Data Capture, Event Streaming, and Multi-Target Sink Pipeline<br/>
+  on Amazon Web Services
+</div>
+
+<div class="cover-meta" style="margin-top:1in;">
+  <table style="width:60%;margin:0 auto;font-size:11pt;">
+    <tr><td style="border:none;text-align:right;color:#808080;">Client</td><td style="border:none;"><strong>Caltech / TCS</strong></td></tr>
+    <tr><td style="border:none;text-align:right;color:#808080;">AWS Account</td><td style="border:none;">342448511503</td></tr>
+    <tr><td style="border:none;text-align:right;color:#808080;">Region</td><td style="border:none;">us-west-2 (Oregon)</td></tr>
+    <tr><td style="border:none;text-align:right;color:#808080;">Stack Name</td><td style="border:none;">caltech-poc</td></tr>
+    <tr><td style="border:none;text-align:right;color:#808080;">Infrastructure-as-Code</td><td style="border:none;">Terraform &ge; 1.5 &middot; AWS Provider &ge; 5.95</td></tr>
+    <tr><td style="border:none;text-align:right;color:#808080;">Document Version</td><td style="border:none;">1.2</td></tr>
+    <tr><td style="border:none;text-align:right;color:#808080;">Date</td><td style="border:none;">May 2026</td></tr>
+  </table>
+</div>
+
+<div class="cover-footer">
+  Prepared by Platform Team &middot; panicleTech<br/>
+  Confidential &mdash; for client use only
+</div>
+
+</div>
+
+<!-- ========================================================================
+     1. EXECUTIVE SUMMARY
+     ======================================================================== -->
+<div class="WordSection2">
+
+<h1>1. Executive Summary</h1>
+
+<p>This document describes the production-grade infrastructure deployed on Amazon Web Services
+(AWS) for the Caltech proof-of-concept (POC). The platform implements a
+<strong>Change Data Capture (CDC) pipeline</strong> that streams row-level changes from a
+source PostgreSQL database into both a PostgreSQL sink and a Redis cache via Debezium and
+Apache Kafka.</p>
+
+<h3>Solution Highlights</h3>
+<ul>
+  <li><strong>Real-time CDC:</strong> Sub-second event propagation from source to multiple sink targets</li>
+  <li><strong>Horizontal scale option:</strong> Aurora PostgreSQL Limitless variant supporting 16&ndash;32 ACUs of sharded compute</li>
+  <li><strong>Highly available Kafka:</strong> 3-broker MSK cluster across 3 Availability Zones</li>
+  <li><strong>Five table-level sink connectors:</strong> Independent JDBC sinks for granular operational control</li>
+  <li><strong>Zero hard-coded secrets:</strong> All credentials auto-generated and stored in AWS Secrets Manager</li>
+  <li><strong>End-to-end encryption:</strong> KMS at rest, TLS in transit on every connection</li>
+  <li><strong>No public IPs on application servers:</strong> Access via AWS Systems Manager Session Manager only</li>
+</ul>
+
+<h3>Key Numbers</h3>
+<table>
+<tr><th style="width:50%;">Metric</th><th>Value</th></tr>
+<tr><td>EC2 application servers</td><td>3 instances &mdash; 1 &times; m6i.2xlarge (app-server / txn simulator) + 2 &times; t3.xlarge (pg-sink, redis-sink)</td></tr>
+<tr><td>Aurora PostgreSQL clusters</td><td>3 (Source Serverless v2, Source Limitless, Sink Serverless v2)</td></tr>
+<tr><td>MSK Kafka brokers</td><td>3 brokers across 3 Availability Zones (kafka.m5.2xlarge, 1000 GB EBS each)</td></tr>
+<tr><td>MSK Connect connectors</td><td>6 (1 Debezium source + 5 JDBC sinks)</td></tr>
+<tr><td>ElastiCache Redis</td><td>1 Serverless cache (TLS, KMS encrypted)</td></tr>
+<tr><td>KMS keys</td><td>5 service-scoped customer-managed keys with auto-rotation</td></tr>
+<tr><td>Security Groups</td><td>7 least-privilege SGs</td></tr>
+<tr><td>Terraform modules</td><td>13 (all reusable, independently testable)</td></tr>
+<tr><td>Estimated monthly cost</td><td>~$3,673 USD (us-west-2, on-demand pricing)</td></tr>
+</table>
+
+</div>
+
+<!-- ========================================================================
+     2. ARCHITECTURE DIAGRAMS (Landscape)
+     ======================================================================== -->
+<div class="WordSection1">
+
+<h1>2. Architecture Diagrams</h1>
+
+<p>The diagrams below show the deployed architecture in three complementary views: a topology
+overview, the end-to-end data flow, and the sequential deployment phases. All resources live
+in a single VPC (<code>vpc-0ed44b92f11b73815</code>) in <code>us-west-2</code>.</p>
+
+<h2>2.1 Topology Overview</h2>
+
+<pre class="diagram">
++--------------------------------------------------------------------------------------------------------------+
+|                          AWS us-west-2  &middot;  VPC vpc-0ed44b92f11b73815                                     |
+|                                                                                                              |
+|  +---------------------+   +----------------------+   +---------------------+   +----------------------+   |
+|  |   PUBLIC SUBNET     |   |   PRIVATE SUBNET     |   |   PRIVATE SUBNET    |   |   PRIVATE SUBNET     |   |
+|  |                     |   |                      |   |                     |   |                      |   |
+|  |  +---------------+  |   | Aurora PostgreSQL    |   | MSK Connect         |   | ElastiCache          |   |
+|  |  |  EC2 x 3      |--+--&gt;| Source (16.x         |--&gt;| Debezium Source     |--&gt;| Redis Serverless     |   |
+|  |  |               |  |   |  Serverless v2)      |   | Connector           |   |                      |   |
+|  |  | &middot; app-server  |  |   |                      |   |                     |   +----------------------+   |
+|  |  |   m6i.2xlarge |  |   | Aurora Source        |   | v                   |   |                      |   |
+|  |  | &middot; pg_sink     |  |   | Limitless            |   | MSK Provisioned     |--&gt;| Aurora PostgreSQL    |   |
+|  |  |   t3.xlarge   |  |   | (16.13-limitless)    |   | Kafka 3.9.x         |   | Sink Serverless v2   |   |
+|  |  | &middot; redis_sink  |  |   |                      |   | kafka.m5.2xlarge    |   | (5 tables hydrated   |   |
+|  |  |   t3.xlarge   |  |   |                      |   | 3 Brokers (3 AZs)   |   |  via 5 JDBC sinks)   |   |
+|  |  +---------------+  |   |                      |   | 1000 GB EBS / broker|   +----------------------+   |
+|  |  VPC Endpoints      |   |                      |   | SASL/SCRAM (9096)   |                              |
+|  |  (SSM x 3)          |   |                      |   | + SASL/IAM (9098)   |                              |
+|  +---------------------+   +----------------------+   +---------------------+                              |
++--------------------------------------------------------------------------------------------------------------+
+</pre>
+
+<h2>2.2 Data Flow (Left to Right)</h2>
+
+<pre class="diagram">
+Application Layer         CDC Source            Event Streaming           Consumer Targets
+------------------        -----------------     ---------------------     --------------------------
+EC2 (Txn Simulator) --&gt;   Aurora Source  --&gt;    Debezium &rarr; MSK    --+--&gt;  ElastiCache Redis
+   m6i.2xlarge            (logical repl.)       Kafka 3.9.x          |
+                                                Topics:              +--&gt;  Aurora Sink &mdash; student_enrollment
+                                                caltech_poc_10.*     +--&gt;  Aurora Sink &mdash; student_attendance
+                                                                     +--&gt;  Aurora Sink &mdash; student_lms
+                                                                     +--&gt;  Aurora Sink &mdash; section_enrollments
+                                                                     +--&gt;  Aurora Sink &mdash; student_term_log
+</pre>
+
+<h2>2.3 Deployment Phases (Left to Right)</h2>
+
+<pre class="diagram">
+PHASE 1 &mdash; Foundation          PHASE 2              PHASE 3                  PHASE 4               PHASE 5
+-------------------------     ------------------   ----------------------   -------------------   ---------------------------
+kms                           ec2                  aurora_source            msk (Kafka)           elasticache (Redis Sink)
+security_groups    ---------&gt; ec2_pg_sink     --&gt; aurora_source_limitless -&gt; msk_connect        -&gt; aurora_sink (PG Sink)
+vpc_endpoints                 ec2_redis_sink                                 (Debezium source)     msk_connect_sink x 5
+s3                                                                                                 (5 JDBC sink connectors)
+secrets
+iam
+</pre>
+
+<div class="callout-info">
+<strong>Reading the topology diagram:</strong> arrows show primary data flow. The <code>app-server</code>
+runs on <strong>m6i.2xlarge</strong> (8 vCPU, 32 GiB) because it generates the simulated write load, while the
+two sink consumers run on <code>t3.xlarge</code> (4 vCPU, 16 GiB). The Aurora Source Limitless cluster is an
+alternative CDC source variant (sharded PostgreSQL 16.13-limitless, 16&ndash;32 ACUs). All inter-service
+traffic stays within the VPC; the MSK cluster has 3 brokers spread across 3 AZs for high availability
+with replication factor 3 and min in-sync replicas 2.
+</div>
+
+</div>
+
+<!-- ========================================================================
+     3. SERVICE COMPONENTS
+     ======================================================================== -->
+<div class="WordSection2">
+
+<h1>3. Service Components</h1>
+
+<h2>3.1 Compute &mdash; Amazon EC2 (x3 instances)</h2>
+<table>
+<tr><th>Instance</th><th>Role</th><th>Instance Type</th><th>Shared configuration</th></tr>
+<tr><td>caltech-poc-app-server</td><td>Transaction simulator</td><td><strong>m6i.2xlarge</strong><br/>(8 vCPU, 32 GiB RAM)</td><td rowspan="3" style="vertical-align:middle;">
+  100 GB gp3 root volume, KMS encrypted<br/>
+  No public IP &mdash; SSM Session Manager access only<br/>
+  IMDSv2 enforced<br/>
+  IAM profile: caltech-poc-ec2-app-role<br/>
+  Key pair: caltech-keypair (emergency SSH)
+</td></tr>
+<tr><td>caltech-poc-pg-sink-app-server</td><td>PostgreSQL sink consumer</td><td>t3.xlarge<br/>(4 vCPU, 16 GiB RAM)</td></tr>
+<tr><td>caltech-poc-redis-sink-app-server</td><td>Redis sink consumer</td><td>t3.xlarge<br/>(4 vCPU, 16 GiB RAM)</td></tr>
+</table>
+
+<p style="font-size:10pt;color:#595959;"><strong>Why the size difference?</strong> The app-server generates the simulated transactional workload that drives the entire CDC pipeline. It needs more CPU and memory than the downstream sink consumers, which only read pre-processed messages from Kafka and write them to the target store.</p>
+
+<h2>3.2 Source Database &mdash; Aurora PostgreSQL (Serverless v2)</h2>
+<table>
+<tr><th style="width:35%;">Setting</th><th>Value</th></tr>
+<tr><td>Cluster identifier</td><td>caltech-poc-aurora-source</td></tr>
+<tr><td>Engine</td><td>aurora-postgresql 16.x</td></tr>
+<tr><td>Capacity range</td><td>0.5 &ndash; 16 ACUs</td></tr>
+<tr><td>Storage</td><td>Aurora Standard, KMS encrypted</td></tr>
+<tr><td>Logical replication</td><td>Enabled (rds.logical_replication=1)</td></tr>
+<tr><td>Max replication slots / WAL senders</td><td>10 / 10</td></tr>
+<tr><td>Backup retention</td><td>7 days</td></tr>
+<tr><td>Deletion protection</td><td>Enabled</td></tr>
+<tr><td>CloudWatch log exports</td><td>postgresql</td></tr>
+</table>
+
+<h2>3.3 Source Database &mdash; Aurora PostgreSQL Limitless (variant)</h2>
+<table>
+<tr><th style="width:35%;">Setting</th><th>Value</th></tr>
+<tr><td>Cluster identifier</td><td>caltech-poc-aurora-source-limitless</td></tr>
+<tr><td>Engine version</td><td>16.13-limitless</td></tr>
+<tr><td>Cluster scalability type</td><td>limitless (horizontal sharding)</td></tr>
+<tr><td>Shard group identifier</td><td>caltech-poc-aurora-source-limitless-shard</td></tr>
+<tr><td>Shard ACU range</td><td>16 &ndash; 32 ACUs</td></tr>
+<tr><td>Storage type</td><td>Aurora I/O-Optimized (required by Limitless)</td></tr>
+<tr><td>Performance Insights</td><td>Required &mdash; enabled with 7-day retention</td></tr>
+<tr><td>Enhanced Monitoring</td><td>Required &mdash; 60-second interval</td></tr>
+</table>
+
+<h2>3.4 Sink Database &mdash; Aurora PostgreSQL (Serverless v2)</h2>
+<table>
+<tr><th style="width:35%;">Setting</th><th>Value</th></tr>
+<tr><td>Cluster identifier</td><td>caltech-poc-aurora-sink</td></tr>
+<tr><td>Engine</td><td>aurora-postgresql 16.x (matches source)</td></tr>
+<tr><td>Capacity range</td><td>0.5 &ndash; 16 ACUs</td></tr>
+<tr><td>Tables hydrated by sink connectors</td><td>5 &mdash; student_enrollment, student_attendance, student_lms, section_enrollments, student_term_log</td></tr>
+<tr><td>Deletion protection</td><td>Enabled</td></tr>
+</table>
+
+</div>
+
+<!-- ========================================================================
+     4. KAFKA & CDC PIPELINE
+     ======================================================================== -->
+<div class="WordSection2">
+
+<h1>4. Kafka &amp; CDC Pipeline</h1>
+
+<h2>4.1 MSK Provisioned Kafka Cluster</h2>
+<table>
+<tr><th style="width:35%;">Setting</th><th>Value</th></tr>
+<tr><td>Cluster name</td><td>caltech-poc-msk</td></tr>
+<tr><td>Kafka version</td><td>3.9.x</td></tr>
+<tr><td>Broker type</td><td>kafka.m5.2xlarge (8 vCPU, 32 GiB RAM)</td></tr>
+<tr><td>Broker count</td><td><strong>3 brokers across 3 AZs</strong> (us-west-2a, 2b, 2c)</td></tr>
+<tr><td>Storage per broker</td><td>1000 GB EBS</td></tr>
+<tr><td>Encryption at rest</td><td>KMS (alias/caltech-poc-secrets)</td></tr>
+<tr><td>Encryption in transit</td><td>TLS for broker&harr;client and in-cluster</td></tr>
+<tr><td>Default replication factor</td><td>3</td></tr>
+<tr><td>Minimum in-sync replicas</td><td>2</td></tr>
+<tr><td>Auto-create topics</td><td>Enabled</td></tr>
+<tr><td>Log retention</td><td>168 hours (7 days)</td></tr>
+<tr><td>SCRAM secret</td><td>AmazonMSK_caltech-poc-scram (username: kafkauser)</td></tr>
+</table>
+
+<h3>Authentication Ports</h3>
+<table>
+<tr><th>Protocol</th><th>Port</th><th>Used by</th></tr>
+<tr><td>SASL/SCRAM (TLS)</td><td>9096</td><td>Application clients on EC2 (credentials from Secrets Manager)</td></tr>
+<tr><td>SASL/IAM (TLS)</td><td>9098</td><td>MSK Connect workers (AWS Signature v4 via IAM role)</td></tr>
+<tr><td>Plaintext</td><td>9092</td><td>MSK Connect internal use (intra-VPC only)</td></tr>
+<tr><td>TLS</td><td>9094</td><td>MSK Connect internal use (intra-VPC only)</td></tr>
+</table>
+
+<h2>4.2 Debezium Source Connector</h2>
+<table>
+<tr><th style="width:35%;">Setting</th><th>Value</th></tr>
+<tr><td>Connector name</td><td>caltech-poc-debezium-postgres-source-connector</td></tr>
+<tr><td>Connector class</td><td>io.debezium.connector.postgresql.PostgresConnector</td></tr>
+<tr><td>PostgreSQL output plugin</td><td>pgoutput</td></tr>
+<tr><td>Publication mode</td><td>all_tables (auto-create)</td></tr>
+<tr><td>Topic prefix</td><td>caltech_poc_10</td></tr>
+<tr><td>Topic naming pattern</td><td>caltech_poc_10.&lt;schema&gt;.&lt;table&gt;</td></tr>
+<tr><td>Single Message Transform (SMT)</td><td>unwrap (io.debezium.transforms.ExtractNewRecordState)</td></tr>
+<tr><td>Schemas.enable</td><td>false (schema-less JSON output)</td></tr>
+<tr><td>Authentication to MSK</td><td>SASL/IAM (port 9098) via MSK Connect execution role</td></tr>
+</table>
+
+<h2>4.3 JDBC Sink Connectors (x5)</h2>
+<table>
+<tr><th>Connector</th><th>Source topic</th><th>Sink table</th></tr>
+<tr><td>postgres-sink-connector-student-enrollment</td><td>caltech_poc_10.public.student_enrollment</td><td>student_enrollment</td></tr>
+<tr><td>postgres-sink-connector-student-attendance</td><td>caltech_poc_10.public.student_attendance</td><td>student_attendance</td></tr>
+<tr><td>postgres-sink-connector-student-lms</td><td>caltech_poc_10.public.student_lms</td><td>student_lms</td></tr>
+<tr><td>postgres-sink-connector-section-enrollments</td><td>caltech_poc_10.public.section_enrollments</td><td>section_enrollments</td></tr>
+<tr><td>postgres-sink-connector-student-term-log</td><td>caltech_poc_10.public.student_term_log</td><td>student_term_log</td></tr>
+</table>
+
+<h4>Sink connector common settings</h4>
+<ul>
+  <li><strong>Connector class:</strong> io.confluent.connect.jdbc.JdbcSinkConnector</li>
+  <li><strong>Dialect:</strong> PostgreSqlDatabaseDialect</li>
+  <li><strong>insert.mode:</strong> upsert (idempotent re-application of events)</li>
+  <li><strong>pk.mode:</strong> record_key (uses Kafka message key as primary key)</li>
+  <li><strong>auto.create / auto.evolve:</strong> true (schema-on-write to the sink)</li>
+  <li><strong>delete.enabled:</strong> true (tombstone messages delete rows)</li>
+  <li><strong>schemas.enable:</strong> false (matches source connector's schema-less output)</li>
+  <li><strong>batch.size:</strong> 5000</li>
+</ul>
+
+</div>
+
+<!-- ========================================================================
+     5. SECURITY
+     ======================================================================== -->
+<div class="WordSection2">
+
+<h1>5. Security Model</h1>
+
+<h2>5.1 Encryption</h2>
+<table>
+<tr><th>Service</th><th>At Rest</th><th>In Transit</th><th>KMS Alias</th></tr>
+<tr><td>EC2 EBS volumes (x3)</td><td>KMS CMK</td><td>n/a</td><td>alias/caltech-poc-ebs</td></tr>
+<tr><td>Aurora Source / Sink / Limitless</td><td>KMS CMK</td><td>TLS (rds.force_ssl=1)</td><td>alias/caltech-poc-aurora</td></tr>
+<tr><td>MSK Provisioned</td><td>KMS CMK</td><td>TLS (broker&harr;client, in-cluster)</td><td>alias/caltech-poc-secrets</td></tr>
+<tr><td>ElastiCache Redis</td><td>KMS CMK</td><td>TLS (always on)</td><td>alias/caltech-poc-redis</td></tr>
+<tr><td>S3 buckets (x3)</td><td>KMS CMK</td><td>TLS</td><td>alias/caltech-poc-s3</td></tr>
+<tr><td>Secrets Manager</td><td>KMS CMK</td><td>TLS</td><td>alias/caltech-poc-secrets</td></tr>
+</table>
+<p style="font-size:10pt;color:#595959;">All KMS keys have automatic yearly rotation enabled.</p>
+
+<h2>5.2 Authentication &amp; Authorization</h2>
+<table>
+<tr><th>Connection</th><th>Method</th></tr>
+<tr><td>Engineer &rarr; EC2</td><td>AWS Systems Manager Session Manager (no SSH keys, no public IP, no bastion)</td></tr>
+<tr><td>EC2 &rarr; MSK</td><td>SASL/SCRAM (port 9096), credentials from AWS Secrets Manager</td></tr>
+<tr><td>MSK Connect &rarr; MSK</td><td>SASL/IAM (port 9098) using MSK Connect execution role</td></tr>
+<tr><td>EC2 &rarr; Aurora (any cluster)</td><td>PostgreSQL password from AWS Secrets Manager</td></tr>
+<tr><td>MSK Connect &rarr; Aurora Source</td><td>PostgreSQL password from Secrets Manager (Debezium configuration)</td></tr>
+<tr><td>MSK Connect &rarr; Aurora Sink</td><td>PostgreSQL password from Secrets Manager (JDBC connection URL)</td></tr>
+<tr><td>EC2 &rarr; ElastiCache Redis</td><td>VPC security group only (no auth token &mdash; TLS protects the link)</td></tr>
+</table>
+
+<h2>5.3 Security Group Matrix</h2>
+<table>
+<tr><th>From &darr; / To &rarr;</th><th>EC2</th><th>MSK</th><th>MSK Connect</th><th>Aurora Src</th><th>Aurora Sink</th><th>Redis</th></tr>
+<tr><td><strong>EC2</strong></td><td>&mdash;</td><td>9098, 9096</td><td>&mdash;</td><td>5432</td><td>5432</td><td>6379</td></tr>
+<tr><td><strong>MSK Connect</strong></td><td>&mdash;</td><td>9098, 9096, 9092, 9094</td><td>&mdash;</td><td>5432</td><td>5432</td><td>&mdash;</td></tr>
+<tr><td><strong>VM CIDR (10.145.0.0/24)</strong></td><td>22, 8080</td><td>&mdash;</td><td>&mdash;</td><td>5432</td><td>5432</td><td>6379</td></tr>
+</table>
+
+<h2>5.4 Network Isolation</h2>
+<ul>
+  <li><strong>No public IPs on EC2.</strong> All access via AWS Systems Manager Session Manager (over private VPC endpoints).</li>
+  <li><strong>Aurora and ElastiCache live in private subnets</strong> with no Internet route.</li>
+  <li><strong>Security groups follow least-privilege.</strong> Inbound rules are restricted to specific source SGs (e.g., Aurora Source SG accepts 5432 only from EC2 SG, MSK Connect SG, and the VM CIDR).</li>
+  <li><strong>On-prem VM access</strong> is allowed only from the CIDR <code>10.145.0.0/24</code> on PostgreSQL (5432), Redis (6379), and EC2 SSH/app (22, 8080).</li>
+  <li><strong>VPC Flow Logs</strong> can be enabled at the VPC level for audit and incident response (not managed by this stack).</li>
+</ul>
+
+<h2>5.5 Credential Handling</h2>
+<ul>
+  <li><strong>No plain-text passwords in code or in terraform.tfvars.</strong> Aurora master passwords are auto-generated by Terraform's <code>random_password</code> and stored exclusively in AWS Secrets Manager.</li>
+  <li><strong>MSK SCRAM secret</strong> is auto-generated and associated with the cluster via <code>aws_msk_scram_secret_association</code>.</li>
+  <li><strong>IAM least-privilege.</strong> The MSK Connect execution role has scoped permissions to read SCRAM secret, write CloudWatch logs, connect to MSK (specific cluster ARN), and read the S3 plugin bucket &mdash; and nothing else.</li>
+  <li><strong>Final tightening.</strong> After all services are deployed, the EC2 and MSK Connect IAM policies are tightened from <code>"*"</code> to the exact MSK cluster ARN.</li>
+</ul>
+
+</div>
+
+<!-- ========================================================================
+     6. DEPLOYMENT SUMMARY
+     ======================================================================== -->
+<div class="WordSection2">
+
+<h1>6. Deployment Summary</h1>
+
+<p>The stack is deployed in six sequential phases that follow the data flow from left to right. Each phase produces an output that the next phase consumes.</p>
+
+<table>
+<tr><th>Phase</th><th>Module</th><th>Estimated Time</th><th>What it produces</th></tr>
+<tr><td rowspan="6" style="vertical-align:middle;"><strong>1. Foundation</strong></td><td>kms</td><td>1 min</td><td>5 KMS keys</td></tr>
+<tr><td>security_groups</td><td>1 min</td><td>7 security groups</td></tr>
+<tr><td>vpc_endpoints</td><td>2 min</td><td>3 SSM interface endpoints + S3 Gateway</td></tr>
+<tr><td>s3</td><td>1 min</td><td>3 S3 buckets (plugins, data-lake, logs)</td></tr>
+<tr><td>secrets</td><td>1 min</td><td>Auto-generated Aurora master passwords</td></tr>
+<tr><td>iam</td><td>1 min</td><td>EC2 instance profile + MSK Connect execution role</td></tr>
+<tr><td><strong>2. App Servers</strong></td><td>ec2 (m6i.2xlarge), ec2_pg_sink, ec2_redis_sink</td><td>3 min</td><td>3 EC2 instances (no public IP)</td></tr>
+<tr><td rowspan="2" style="vertical-align:middle;"><strong>3. Source DB</strong></td><td>aurora_source</td><td>5&ndash;15 min</td><td>Aurora Serverless v2 source</td></tr>
+<tr><td>aurora_source_limitless</td><td>20&ndash;40 min</td><td>Aurora Limitless source (shard group)</td></tr>
+<tr><td rowspan="2" style="vertical-align:middle;"><strong>4. CDC Pipeline</strong></td><td>msk</td><td>30&ndash;40 min</td><td>3-broker Kafka cluster</td></tr>
+<tr><td>msk_connect (Debezium source)</td><td>5&ndash;10 min</td><td>CDC streaming live</td></tr>
+<tr><td rowspan="3" style="vertical-align:middle;"><strong>5. Consumers</strong></td><td>elasticache</td><td>2 min</td><td>Redis cache</td></tr>
+<tr><td>aurora_sink</td><td>5&ndash;15 min</td><td>Aurora Serverless v2 sink</td></tr>
+<tr><td>msk_connect_sink x5</td><td>5&ndash;10 min each</td><td>5 JDBC sink connectors writing to Aurora Sink</td></tr>
+<tr><td><strong>6. Final pass</strong></td><td>terraform apply</td><td>1 min</td><td>IAM tightened from <code>"*"</code> to exact ARNs</td></tr>
+</table>
+
+<p><strong>Total wall-clock time:</strong> approximately 2.5 hours for a fresh deployment.</p>
+
+</div>
+
+<!-- ========================================================================
+     7. COST ESTIMATE
+     ======================================================================== -->
+<div class="WordSection2">
+
+<h1>7. Indicative Monthly Cost</h1>
+
+<p>Approximate cost in <code>us-west-2</code> using on-demand pricing as of May 2026. Actual costs vary with load, data transfer, and any AWS pricing changes.</p>
+
+<table>
+<tr><th>Component</th><th>Cost driver</th><th>Estimate (USD/month)</th></tr>
+<tr><td>Aurora PostgreSQL Source (Serverless v2)</td><td>0.5 ACU avg &times; $0.12/ACU-hr &times; 730 hr</td><td>~$44</td></tr>
+<tr><td>Aurora PostgreSQL Sink (Serverless v2)</td><td>0.5 ACU avg &times; $0.12/ACU-hr &times; 730 hr</td><td>~$44</td></tr>
+<tr><td><strong>Aurora PostgreSQL Source Limitless</strong></td><td>16 ACU min &times; $0.12/ACU-hr &times; 730 hr</td><td><strong>~$1,400</strong></td></tr>
+<tr><td>MSK Provisioned (3 brokers)</td><td>3 &times; kafka.m5.2xlarge &times; ~$0.50/hr &times; 730 hr</td><td>~$1,095</td></tr>
+<tr><td>MSK Connect (6 connectors)</td><td>1&ndash;2 workers &times; 1 MCU &times; ~$0.11/MCU-hr &times; 730 hr</td><td>~$80</td></tr>
+<tr><td>EC2 &mdash; app-server (m6i.2xlarge)</td><td>1 &times; ~$0.384/hr &times; 730 hr</td><td>~$280</td></tr>
+<tr><td>EC2 &mdash; pg/redis sinks (x2 t3.xlarge)</td><td>2 &times; ~$0.166/hr &times; 730 hr</td><td>~$243</td></tr>
+<tr><td>ElastiCache Serverless</td><td>Min 1 GB storage + 1000 ECPU/s</td><td>~$80</td></tr>
+<tr><td>EBS storage (MSK brokers)</td><td>3 &times; 1000 GB &times; $0.10/GB-month</td><td>~$300</td></tr>
+<tr><td>Data transfer (cross-AZ, internet egress)</td><td>Variable</td><td>$50&ndash;200</td></tr>
+<tr style="background:#dbe5f1;"><td colspan="2"><strong>Estimated Total</strong></td><td><strong>~$3,673 / month</strong></td></tr>
+</table>
+
+<div class="callout">
+<strong>Cost note:</strong> Aurora PostgreSQL Limitless is the largest single line item (~$1,400/month at the 16-ACU minimum, billed continuously even when idle). If the POC scope does not require Limitless, the standard <code>aurora_source</code> alone covers the CDC requirement and the monthly cost drops by approximately $1,400.
+</div>
+
+<div class="callout-info">
+<strong>EC2 sizing rationale:</strong> The <code>app-server</code> runs the transaction simulator that drives the entire CDC pipeline, so it uses a heavier compute-optimized <code>m6i.2xlarge</code> (8 vCPU, 32 GiB) at ~$280/month. The <code>pg-sink-app-server</code> and <code>redis-sink-app-server</code> only consume pre-processed Kafka messages and write to the target stores, so the lighter <code>t3.xlarge</code> burstable instance suits them at ~$121/month each.
+</div>
+
+</div>
+
+<!-- ========================================================================
+     8. APPENDIX
+     ======================================================================== -->
+<div class="WordSection2">
+
+<h1>8. Appendix</h1>
+
+<h2>8.1 Terraform Module Inventory</h2>
+<table>
+<tr><th>#</th><th>Module</th><th>Purpose</th></tr>
+<tr><td>1</td><td>kms</td><td>5 service-scoped customer-managed KMS keys with auto-rotation</td></tr>
+<tr><td>2</td><td>security_groups</td><td>7 least-privilege security groups</td></tr>
+<tr><td>3</td><td>vpc_endpoints</td><td>SSM interface endpoints + S3 Gateway endpoint</td></tr>
+<tr><td>4</td><td>s3</td><td>3 buckets with lifecycle policies (plugins, data-lake, logs)</td></tr>
+<tr><td>5</td><td>secrets</td><td>Auto-generated Aurora master credentials</td></tr>
+<tr><td>6</td><td>iam</td><td>EC2 instance profile + MSK Connect execution role</td></tr>
+<tr><td>7</td><td>ec2</td><td>App server template (used 3 times: app on m6i.2xlarge, pg_sink + redis_sink on t3.xlarge)</td></tr>
+<tr><td>8</td><td>aurora_source</td><td>CDC source &mdash; Aurora PostgreSQL Serverless v2 with logical replication</td></tr>
+<tr><td>9</td><td>aurora_source_limitless</td><td>CDC source &mdash; Aurora PostgreSQL Limitless variant (shard group)</td></tr>
+<tr><td>10</td><td>aurora_sink</td><td>JDBC sink target &mdash; Aurora PostgreSQL Serverless v2</td></tr>
+<tr><td>11</td><td>msk</td><td>MSK Provisioned cluster (3 brokers, kafka.m5.2xlarge, 1000 GB EBS each)</td></tr>
+<tr><td>12</td><td>msk_connect</td><td>Generic MSK Connect connector (instantiated 6 times)</td></tr>
+<tr><td>13</td><td>elasticache</td><td>ElastiCache Serverless Redis cache</td></tr>
+</table>
+
+<h2>8.2 Network IDs</h2>
+<table>
+<tr><th>Resource</th><th>Identifier</th></tr>
+<tr><td>VPC</td><td>vpc-0ed44b92f11b73815</td></tr>
+<tr><td>Public Subnet 1</td><td>subnet-038946a978f266b7d</td></tr>
+<tr><td>Public Subnet 2</td><td>subnet-052b8a9527604c064</td></tr>
+<tr><td>Private Subnet 1 (us-west-2a)</td><td>subnet-0afa40d43201113c7</td></tr>
+<tr><td>Private Subnet 2 (us-west-2b)</td><td>subnet-09fbbd79068ad5555</td></tr>
+<tr><td>Private Subnet 3 (us-west-2c)</td><td>subnet-069266bf3b71d537e</td></tr>
+<tr><td>External VM CIDR</td><td>10.145.0.0/24</td></tr>
+</table>
+
+<h2>8.3 Resource Naming Convention</h2>
+<p>All resources follow the pattern <code>caltech-poc-&lt;service&gt;-&lt;suffix&gt;</code>. Tags are applied automatically by the Terraform provider:</p>
+<pre>Environment = poc
+Project     = caltech
+ManagedBy   = terraform
+Owner       = platform-team
+CostCenter  = engineering
+Terraform   = true</pre>
+
+<h2>8.4 Related Documentation</h2>
+<ul>
+  <li><strong>README.md</strong> &mdash; Quick deployment guide with command-by-command instructions</li>
+  <li><strong>DOCUMENTATION.md</strong> &mdash; Full operations reference (state management, runbooks, DR)</li>
+  <li><strong>MSK-CONNECT-CONFIG.md</strong> &mdash; Connector configuration Q&amp;A for the application team</li>
+  <li><strong>ARCHITECTURE.md</strong> &mdash; Mermaid diagrams and detailed network view</li>
+</ul>
+
+<h2>8.5 Document Revision History</h2>
+<table>
+<tr><th>Version</th><th>Date</th><th>Author</th><th>Change</th></tr>
+<tr><td>1.0</td><td>May 2026</td><td>Platform Team (panicleTech)</td><td>Initial customer-facing architecture document</td></tr>
+<tr><td>1.1</td><td>May 2026</td><td>Platform Team (panicleTech)</td><td>Replaced inline SVG with ASCII box-art diagrams (Word-compatible rendering); added Data Flow and Deployment Phases diagrams; added Security Group matrix</td></tr>
+<tr><td>1.2</td><td>May 2026</td><td>Platform Team (panicleTech)</td><td>Updated app-server EC2 instance type to <code>m6i.2xlarge</code> (8 vCPU, 32 GiB); pg-sink and redis-sink remain <code>t3.xlarge</code>. Updated cost estimate and all diagrams accordingly.</td></tr>
+</table>
+
+<div style="margin-top:36pt;text-align:center;font-size:9pt;color:#808080;">
+&mdash; End of Document &mdash;
+</div>
+
+</div>
+
+</body>
+</html>
