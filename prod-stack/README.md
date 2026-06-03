@@ -6,12 +6,13 @@
 
 | Service | Instance(s) | Notes |
 |---|---|---|
+| **VPC + Subnets** | Optional via `create_vpc` flag | When `true`, Terraform builds a fresh VPC with 3 public + 3 private subnets, IGW, NAT. When `false`, uses an existing VPC + subnet IDs from tfvars |
 | **EC2 app servers** | 3 instances | `app-server` (txn simulator) on `m6i.2xlarge`; `pg-sink-app-server` + `redis-sink-app-server` on `t3.xlarge` — all no public IP, SSM access |
 | **Aurora PostgreSQL Source** | 1 cluster (Serverless v2) | CDC source with logical replication enabled |
 | **Aurora PostgreSQL Source Limitless** | 1 cluster + shard group | PG `16.13-limitless`, 16–32 ACUs, sharded variant |
 | **Aurora PostgreSQL Sink** | 1 cluster (Serverless v2) | JDBC sink target hydrated by 5 connectors |
 | **MSK Provisioned** | 3 brokers (3 AZs) | `kafka.m5.2xlarge`, Kafka 3.9.x, 1000 GB EBS each |
-| **MSK Connect** | 6 connectors | 1 Debezium source + 5 JDBC sinks (one per table) |
+| **MSK Connect** | 7 connectors | 2 Debezium sources (split tables) + 5 JDBC sinks (one per table) |
 | **ElastiCache Redis** | Serverless cache | TLS always-on, KMS encrypted |
 | **Supporting** | KMS (5 keys), SGs (7), VPC endpoints, S3 (3 buckets), Secrets Manager, IAM roles | All scoped to least-privilege |
 
@@ -70,10 +71,11 @@ iam
 
 ---
 
-## Module Inventory (13 modules)
+## Module Inventory (14 modules)
 
 | # | Module | Purpose | Key resources |
 |---|---|---|---|
+| 0 | `vpc` | **Optional** — fresh VPC + subnets + IGW + NAT | Only created when `create_vpc = true` |
 | 1 | `kms` | Service-scoped CMKs | 5 keys: ebs, s3, aurora, redis, secrets |
 | 2 | `security_groups` | Least-privilege SGs | EC2, MSK, MSK Connect, Aurora ×2, ElastiCache |
 | 3 | `vpc_endpoints` | Interface + Gateway | SSM, SSMMessages, EC2Messages, S3 Gateway |
@@ -85,7 +87,7 @@ iam
 | 9 | `aurora_source_limitless` | CDC source — Limitless variant | PG 16.13-limitless, 16–32 ACU shard group |
 | 10 | `aurora_sink` | JDBC sink target | Serverless v2 — receives Kafka events |
 | 11 | `msk` | Provisioned Kafka cluster | kafka.m5.2xlarge × **3 brokers** (3 AZs) |
-| 12 | `msk_connect` | Generic connector module | Reused 6× (1 Debezium source + 5 JDBC sinks) |
+| 12 | `msk_connect` | Generic connector module | Reused 7× (2 Debezium sources + 5 JDBC sinks) |
 | 13 | `elasticache` | Redis cache | Serverless cache (Redis 7+) |
 
 ---
@@ -95,10 +97,12 @@ iam
 | Setting | Value |
 |---|---|
 | Environment | `poc` |
-| VPC | `vpc-0ed44b92f11b73815` |
-| Public Subnets | `subnet-038946a978f266b7d`, `subnet-052b8a9527604c064` |
-| Private Subnets | `subnet-0afa40d43201113c7`, `subnet-09fbbd79068ad5555` |
-| MSK Subnets (3 AZs) | `subnet-0afa40d43201113c7`, `subnet-09fbbd79068ad5555`, `subnet-069266bf3b71d537e` |
+| **Network mode** | `create_vpc = false` (uses existing VPC below) |
+| **Existing VPC** | `vpc-0ed44b92f11b73815` |
+| **Existing Public Subnets** | `subnet-038946a978f266b7d`, `subnet-052b8a9527604c064` |
+| **Existing Private Subnets** | `subnet-0afa40d43201113c7`, `subnet-09fbbd79068ad5555` |
+| **Existing MSK Subnets (3 AZs)** | `subnet-0afa40d43201113c7`, `subnet-09fbbd79068ad5555`, `subnet-069266bf3b71d537e` |
+| **New VPC defaults** (when `create_vpc = true`) | CIDR `10.0.0.0/16`; AZs `us-west-2{a,b,c}`; public `10.0.{1,2,3}.0/24`; private `10.0.{11,12,13}.0/24`; NAT enabled |
 | EC2 AMI | `ami-04486bbfa25728941` |
 | EC2 instance types | `app-server`: **`m6i.2xlarge`** (8 vCPU, 32 GiB) · `pg-sink-app-server` + `redis-sink-app-server`: `t3.xlarge` (4 vCPU, 16 GiB) |
 | EC2 storage | 100 GB gp3 root (KMS encrypted) · no public IP |
@@ -129,6 +133,72 @@ Creates S3 state bucket, DynamoDB lock table, runs `terraform init -upgrade` and
 
 ---
 
+## Network Modes (VPC: use existing OR create new)
+
+The stack supports two network deployment modes, controlled by one flag in `terraform.tfvars`:
+
+```hcl
+create_vpc = false   # default — use the existing VPC (current production)
+# OR
+create_vpc = true    # Terraform builds a new VPC + subnets + IGW + NAT
+```
+
+### Mode A — Existing VPC (default, current production)
+
+```hcl
+# terraform.tfvars
+create_vpc             = false
+vpc_id                 = "vpc-0ed44b92f11b73815"
+public_subnet_ids      = ["subnet-038946a978f266b7d", "subnet-052b8a9527604c064"]
+private_subnet_ids     = ["subnet-0afa40d43201113c7", "subnet-09fbbd79068ad5555"]
+msk_subnet_ids         = ["subnet-0afa40d43201113c7", "subnet-09fbbd79068ad5555", "subnet-069266bf3b71d537e"]
+elasticache_subnet_ids = ["subnet-09fbbd79068ad5555", "subnet-069266bf3b71d537e"]
+```
+
+All modules deploy into the existing VPC. This is the current production deployment — leave it set this way unless you're spinning up a new environment.
+
+### Mode B — Fresh VPC (new environment)
+
+```hcl
+# terraform.tfvars
+create_vpc           = true
+vpc_cidr             = "10.0.0.0/16"                                  # any non-overlapping CIDR
+availability_zones   = ["us-west-2a", "us-west-2b", "us-west-2c"]
+public_subnet_cidrs  = ["10.0.1.0/24", "10.0.2.0/24", "10.0.3.0/24"]
+private_subnet_cidrs = ["10.0.11.0/24", "10.0.12.0/24", "10.0.13.0/24"]
+enable_nat_gateway   = true
+```
+
+When `create_vpc = true`:
+- `module.vpc` creates the VPC, 3 public + 3 private subnets, Internet Gateway, NAT Gateway, route tables
+- All downstream modules (security_groups, EC2, Aurora, MSK, etc.) automatically use the new VPC via `locals.*`
+- The existing `vpc_id` / `*_subnet_ids` values are ignored
+
+⚠️ **Do NOT flip `create_vpc = true` on the existing deployment.** It will try to move every resource to the new VPC, destroying the production stack. Use this mode only for fresh deployments (new account, new region, or testing — see [Testing the VPC module safely](#testing-the-vpc-module-safely) below).
+
+### Testing the VPC module safely
+
+To test the new VPC without disturbing production:
+
+```bash
+# 1. Set in tfvars
+create_vpc = true
+vpc_cidr   = "10.160.0.0/16"   # any non-overlapping CIDR
+
+# 2. Apply ONLY the VPC module — never do a full apply while testing
+terraform apply -target=module.vpc
+
+# 3. Verify in the AWS console (look for caltech-poc-vpc, subnets, IGW, NAT)
+
+# 4. Destroy the test VPC
+terraform destroy -target=module.vpc
+
+# 5. Revert
+create_vpc = false
+```
+
+---
+
 ## Prerequisites
 
 | Requirement | Details |
@@ -151,6 +221,35 @@ aws sts get-caller-identity --profile default    # verify auth → Account: 3424
 ## Sequential Deployment (Left to Right)
 
 **Deploy each step in order. Verify success before moving to the next.**
+
+---
+
+## PHASE 0: Network (only if `create_vpc = true`)
+
+Skip this phase entirely if `create_vpc = false` (you're using an existing VPC).
+
+```bash
+terraform apply -target=module.vpc
+```
+
+**What gets created:**
+- 1 VPC (`caltech-poc-vpc`) with DNS hostnames enabled
+- 3 public subnets (one per AZ — `us-west-2a`, `2b`, `2c`)
+- 3 private subnets (one per AZ)
+- 1 Internet Gateway
+- 1 NAT Gateway (with Elastic IP, in first public subnet — cost-optimized single NAT)
+- Public route table (default route → IGW) with associations
+- Private route table (default route → NAT) with associations
+
+**Verify:**
+```bash
+terraform output vpc_id
+terraform output public_subnet_ids
+terraform output private_subnet_ids
+terraform output nat_gateway_eip
+```
+
+After this, the `locals` automatically wire all downstream modules to use the new VPC's subnet IDs. Proceed to Phase 1.
 
 ---
 
@@ -419,6 +518,7 @@ Tightens IAM MSK policy from `*` to the exact cluster ARN. Validates full stack 
 
 | Phase | Module | Command | Est. Time |
 |---|---|---|---|
+| Network (optional) | vpc | `terraform apply -target=module.vpc` *(only if `create_vpc = true`)* | 3 min |
 | Foundation | kms | `terraform apply -target=module.kms` | 1 min |
 | Foundation | security_groups | `terraform apply -target=module.security_groups` | 1 min |
 | Foundation | vpc_endpoints | `terraform apply -target=module.vpc_endpoints` | 2 min |
@@ -455,6 +555,7 @@ prod-stack/
 │   └── init.sh              # Bootstrap script (cross-platform: Linux, macOS, Windows MINGW64)
 │
 └── modules/
+    ├── vpc/                 # NEW: VPC + 3 public + 3 private subnets + IGW + NAT (opt-in)
     ├── kms/                 # 5 service-scoped CMKs
     ├── security_groups/     # 7 SGs with least-privilege rules
     ├── vpc_endpoints/       # SSM interface endpoints + S3 Gateway
@@ -466,7 +567,7 @@ prod-stack/
     ├── aurora_source_limitless/  # Limitless variant via null_resource + AWS CLI
     ├── aurora_sink/         # Serverless v2 sink target
     ├── msk/                 # Provisioned Kafka with broker config
-    ├── msk_connect/         # Generic MSK Connect connector (reused 6×)
+    ├── msk_connect/         # Generic MSK Connect connector (reused 7×)
     └── elasticache/         # Redis Serverless cache
 ```
 
@@ -532,9 +633,14 @@ terraform destroy \
 # Step 3 — Destroy Aurora Limitless (runs destroy provisioners via AWS CLI)
 terraform destroy -target=module.aurora_source_limitless
 
-# Step 4 — Destroy everything else
+# Step 4 — Destroy everything else (will also destroy module.vpc if create_vpc = true)
 terraform destroy
 ```
+
+> If you only need to tear down the VPC test (when `create_vpc = true` and nothing else was deployed):
+> ```bash
+> terraform destroy -target=module.vpc
+> ```
 
 ---
 
