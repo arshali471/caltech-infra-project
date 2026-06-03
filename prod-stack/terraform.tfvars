@@ -1,7 +1,13 @@
 ###############################################################################
 # prod-stack/terraform.tfvars
 # All values are explicit — nothing is hardcoded in any module.
-# Update vpc_id / subnet_ids before running terraform apply.
+#
+# TWO NETWORK MODES:
+#   1. create_vpc = false  → Use the existing VPC (current default).
+#                            Edit "Existing VPC" section below.
+#   2. create_vpc = true   → Terraform builds a fresh VPC + subnets + IGW + NAT.
+#                            Edit "New VPC (built by Terraform)" section below.
+#   Only ONE section is consumed at a time — the other is harmless dead config.
 ###############################################################################
 
 aws_profile = "default"
@@ -9,10 +15,27 @@ aws_region  = "us-west-2"
 environment = "poc"
 project     = "caltech"
 
-# ---- Existing VPC ----------------------------------------------------------
-vpc_id             = "vpc-0ed44b92f11b73815"
-public_subnet_ids  = ["subnet-038946a978f266b7d", "subnet-052b8a9527604c064"]
-private_subnet_ids = ["subnet-0afa40d43201113c7", "subnet-09fbbd79068ad5555"]
+# ============================================================================
+# NETWORK MODE TOGGLE
+# ============================================================================
+# false → use existing VPC (vpc_id + *_subnet_ids below)
+# true  → create a new VPC via module.vpc (vpc_cidr + AZ vars below)
+create_vpc = false
+
+# ---- New VPC (built by Terraform when create_vpc = true) -------------------
+# These values are IGNORED when create_vpc = false.
+vpc_cidr             = "10.0.0.0/16"
+availability_zones   = ["us-west-2a", "us-west-2b", "us-west-2c"]
+public_subnet_cidrs  = ["10.0.1.0/24", "10.0.2.0/24", "10.0.3.0/24"]
+private_subnet_cidrs = ["10.0.11.0/24", "10.0.12.0/24", "10.0.13.0/24"]
+enable_nat_gateway   = true
+
+# ---- Existing VPC (used when create_vpc = false) ---------------------------
+# Current production values for the existing Caltech VPC.
+# These values are IGNORED when create_vpc = true.
+vpc_id                 = "vpc-0ed44b92f11b73815"
+public_subnet_ids      = ["subnet-038946a978f266b7d", "subnet-052b8a9527604c064"]
+private_subnet_ids     = ["subnet-0afa40d43201113c7", "subnet-09fbbd79068ad5555"]
 msk_subnet_ids         = ["subnet-0afa40d43201113c7", "subnet-09fbbd79068ad5555", "subnet-069266bf3b71d537e"]
 elasticache_subnet_ids = ["subnet-09fbbd79068ad5555", "subnet-069266bf3b71d537e"]
 
@@ -23,13 +46,13 @@ postgres_port  = 5432
 redis_port     = 6379
 
 # ---- EC2 -------------------------------------------------------------------
-ec2_ami_id           = "ami-04486bbfa25728941"
-ec2_key_pair_name    = "caltech-keypair"
-ssh_allowed_cidr     = ["10.145.0.0/24"]
+ec2_ami_id                   = "ami-04486bbfa25728941"
+ec2_key_pair_name            = "caltech-keypair"
+ssh_allowed_cidr             = ["10.145.0.0/24"]
 ec2_instance_type            = "t3.xlarge"      # used by ec2_pg_sink + ec2_redis_sink
 ec2_app_server_instance_type = "m6i.2xlarge"    # used by the primary app-server (txn simulator)
-ec2_root_volume_gb   = 100
-ec2_volume_type      = "gp3"
+ec2_root_volume_gb           = 100
+ec2_volume_type              = "gp3"
 // java_package         = "java-17-amazon-corretto"
 // msk_iam_auth_version = "1.1.9"
 
@@ -44,19 +67,25 @@ aurora_deletion_protection          = true
 aurora_cloudwatch_logs_exports      = ["postgresql"]
 
 # ---- Aurora Source (CDC / Debezium) ----------------------------------------
-aurora_source_db_name                = "sourcedb"
-aurora_source_master_username        = "dbadmin"
-aurora_source_min_acu                = 0.5
-aurora_source_max_acu                = 16
-aurora_source_max_replication_slots  = 10
-aurora_source_max_wal_senders        = 10
-aurora_source_wal_sender_timeout_ms  = 0
+aurora_source_db_name               = "sourcedb"
+aurora_source_master_username       = "dbadmin"
+aurora_source_min_acu               = 0.5
+aurora_source_max_acu               = 16
+aurora_source_max_replication_slots = 10
+aurora_source_max_wal_senders       = 10
+aurora_source_wal_sender_timeout_ms = 0
+
+# ---- Aurora Source Limitless (variant) -------------------------------------
+aurora_limitless_engine_version     = "16.13-limitless"
+aurora_limitless_min_acu            = 16
+aurora_limitless_max_acu            = 32
+aurora_limitless_compute_redundancy = 0
 
 # ---- Aurora Sink (PostgreSQL consumer target) ------------------------------
-aurora_sink_db_name           = "sinkdb"
-aurora_sink_master_username   = "dbadmin"
-aurora_sink_min_acu           = 0.5
-aurora_sink_max_acu           = 16
+aurora_sink_db_name         = "sinkdb"
+aurora_sink_master_username = "dbadmin"
+aurora_sink_min_acu         = 0.5
+aurora_sink_max_acu         = 16
 
 # ---- ElastiCache -----------------------------------------------------------
 elasticache_engine        = "redis"
@@ -72,12 +101,12 @@ msk_broker_instance_type  = "kafka.m5.2xlarge"
 msk_broker_volume_size_gb = 1000
 
 # ---- MSK Connect -----------------------------------------------------------
-kafkaconnect_version               = "3.7.x"
-debezium_plugin_s3_key             = "plugins/debezium-debezium-connector-postgresql-3.2.6-1.zip"
-msk_connect_custom_plugin_name     = "caltech-poc-debezium-postgresql-source-connector-plugin"
-msk_connect_sink_plugin_name       = "caltech-poc-postgres-sink-connector-plugin"
-sink_topics                        = "caltech_poc_10.public.student_enrollment"
-sink_table_name_format             = "student_enrollment"
+kafkaconnect_version           = "3.7.x"
+debezium_plugin_s3_key         = "plugins/debezium-debezium-connector-postgresql-3.2.6-1.zip"
+msk_connect_custom_plugin_name = "caltech-poc-debezium-postgresql-source-connector-plugin"
+msk_connect_sink_plugin_name   = "caltech-poc-postgres-sink-connector-plugin"
+sink_topics                    = "caltech_poc_10.public.student_enrollment"
+sink_table_name_format         = "student_enrollment"
 msk_connect_min_workers        = 2
 msk_connect_max_workers        = 4
 msk_connect_mcu_count          = 1
@@ -87,8 +116,8 @@ msk_connect_scale_out_cpu_pct  = 80
 # ---- Debezium connector ----------------------------------------------------
 debezium_snapshot_mode         = "initial"
 debezium_plugin_name           = "pgoutput"
-debezium_slot_name             = "dbz_students_slot"
-debezium_publication_name      = "dbz_publication"
+debezium_slot_name             = "dbz_students_slot"      # connector 1 uses ${name}_1, connector 2 uses ${name}_2
+debezium_publication_name      = "dbz_publication"        # connector 1 uses ${name}_1, connector 2 uses ${name}_2
 debezium_topic_prefix          = "caltech_poc_10"
 debezium_tasks_max             = 1
 debezium_heartbeat_interval_ms = 30000

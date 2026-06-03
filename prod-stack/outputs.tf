@@ -2,6 +2,12 @@
 # prod-stack/outputs.tf
 ###############################################################################
 
+# ---- VPC (only populated when create_vpc = true) ---------------------------
+output "vpc_id"             { value = local.vpc_id }
+output "public_subnet_ids"  { value = local.public_subnet_ids }
+output "private_subnet_ids" { value = local.private_subnet_ids }
+output "nat_gateway_eip"    { value = var.create_vpc ? module.vpc[0].nat_eip : null }
+
 # ---- EC2 -------------------------------------------------------------------
 output "ec2_instance_id"    { value = module.ec2.instance_id }
 output "ec2_public_ip"      { value = module.ec2.public_ip }

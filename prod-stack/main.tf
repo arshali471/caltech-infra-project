@@ -49,6 +49,37 @@ locals {
 }
 
 ###############################################################################
+# Step 0 — VPC + Subnets (opt-in via var.create_vpc)
+# When create_vpc = true, this module builds the network from scratch.
+# When create_vpc = false, the existing vpc_id / *_subnet_ids variables are used.
+###############################################################################
+
+module "vpc" {
+  count = var.create_vpc ? 1 : 0
+
+  source = "./modules/vpc"
+  name   = local.name
+
+  vpc_cidr             = var.vpc_cidr
+  availability_zones   = var.availability_zones
+  public_subnet_cidrs  = var.public_subnet_cidrs
+  private_subnet_cidrs = var.private_subnet_cidrs
+  enable_nat_gateway   = var.enable_nat_gateway
+
+  tags = var.tags
+}
+
+# ---- Network IDs picked from either the new module or existing vars ---------
+
+locals {
+  vpc_id                  = var.create_vpc ? module.vpc[0].vpc_id              : var.vpc_id
+  public_subnet_ids       = var.create_vpc ? module.vpc[0].public_subnet_ids   : var.public_subnet_ids
+  private_subnet_ids      = var.create_vpc ? module.vpc[0].private_subnet_ids  : var.private_subnet_ids
+  msk_subnet_ids          = var.create_vpc ? module.vpc[0].private_subnet_ids  : var.msk_subnet_ids
+  elasticache_subnet_ids  = var.create_vpc ? module.vpc[0].private_subnet_ids  : var.elasticache_subnet_ids
+}
+
+###############################################################################
 # Step 1 — KMS
 ###############################################################################
 
@@ -66,7 +97,7 @@ module "kms" {
 module "security_groups" {
   source           = "./modules/security_groups"
   name             = local.name
-  vpc_id           = var.vpc_id
+  vpc_id           = local.vpc_id
   msk_port         = var.msk_port
   msk_scram_port   = var.msk_scram_port
   postgres_port    = var.postgres_port
@@ -82,10 +113,10 @@ module "security_groups" {
 module "vpc_endpoints" {
   source                 = "./modules/vpc_endpoints"
   name                   = local.name
-  vpc_id                 = var.vpc_id
+  vpc_id                 = local.vpc_id
   aws_region             = var.aws_region
-  subnet_ids             = var.public_subnet_ids
-  public_route_table_ids = tolist(data.aws_route_tables.public.ids)
+  subnet_ids             = local.public_subnet_ids
+  public_route_table_ids = var.create_vpc ? [module.vpc[0].public_route_table_id] : tolist(data.aws_route_tables.public[0].ids)
   tags                   = var.tags
 }
 
@@ -130,7 +161,7 @@ module "msk" {
   source = "./modules/msk"
   name   = local.name
 
-  subnet_ids            = var.msk_subnet_ids
+  subnet_ids            = local.msk_subnet_ids
   security_group_id     = module.security_groups.msk_sg_id
   kms_key_arn           = module.kms.secrets_key_arn
   kafka_version         = var.msk_kafka_version
@@ -176,7 +207,7 @@ module "aurora_source" {
   db_name        = var.aurora_source_db_name
   master_username = var.aurora_source_master_username
   master_password = module.secrets.aurora_source_password
-  subnet_ids      = var.private_subnet_ids
+  subnet_ids      = local.private_subnet_ids
   security_group_id = module.security_groups.aurora_source_sg_id
   kms_key_arn     = module.kms.aurora_key_arn
   min_acu         = var.aurora_source_min_acu
@@ -209,7 +240,7 @@ module "aurora_source_limitless" {
   db_name           = var.aurora_source_db_name
   master_username   = var.aurora_source_master_username
   master_password   = module.secrets.aurora_source_password
-  subnet_ids        = var.private_subnet_ids
+  subnet_ids        = local.private_subnet_ids
   security_group_id = module.security_groups.aurora_source_sg_id
   kms_key_arn       = module.kms.aurora_key_arn
   min_acu           = var.aurora_limitless_min_acu
@@ -243,7 +274,7 @@ module "aurora_sink" {
   db_name        = var.aurora_sink_db_name
   master_username = var.aurora_sink_master_username
   master_password = module.secrets.aurora_sink_password
-  subnet_ids      = var.private_subnet_ids
+  subnet_ids      = local.private_subnet_ids
   security_group_id = module.security_groups.aurora_sink_sg_id
   kms_key_arn     = module.kms.aurora_key_arn
   min_acu         = var.aurora_sink_min_acu
@@ -268,7 +299,7 @@ module "elasticache" {
   name   = local.name
 
   engine              = var.elasticache_engine
-  subnet_ids          = var.elasticache_subnet_ids
+  subnet_ids          = local.elasticache_subnet_ids
   security_group_id   = module.security_groups.elasticache_sg_id
   kms_key_arn         = module.kms.redis_key_arn
   min_data_storage_gb = var.redis_min_data_storage_gb
@@ -288,7 +319,7 @@ module "ec2" {
 
   ami_id                = var.ec2_ami_id
   instance_type         = var.ec2_app_server_instance_type
-  subnet_id             = var.public_subnet_ids[0]
+  subnet_id             = local.public_subnet_ids[0]
   key_pair_name         = var.ec2_key_pair_name
   security_group_id     = module.security_groups.ec2_sg_id
   instance_profile_name = module.iam.ec2_instance_profile_name
@@ -306,7 +337,7 @@ module "ec2_pg_sink" {
 
   ami_id                = var.ec2_ami_id
   instance_type         = var.ec2_instance_type
-  subnet_id             = var.public_subnet_ids[0]
+  subnet_id             = local.public_subnet_ids[0]
   key_pair_name         = var.ec2_key_pair_name
   security_group_id     = module.security_groups.ec2_sg_id
   instance_profile_name = module.iam.ec2_instance_profile_name
@@ -322,7 +353,7 @@ module "ec2_redis_sink" {
 
   ami_id                = var.ec2_ami_id
   instance_type         = var.ec2_instance_type
-  subnet_id             = var.public_subnet_ids[0]
+  subnet_id             = local.public_subnet_ids[0]
   key_pair_name         = var.ec2_key_pair_name
   security_group_id     = module.security_groups.ec2_sg_id
   instance_profile_name = module.iam.ec2_instance_profile_name
@@ -353,7 +384,7 @@ module "msk_connect" {
   custom_plugin_name    = var.msk_connect_custom_plugin_name
   bootstrap_servers     = module.msk.bootstrap_brokers_iam
   msk_connect_sg_id     = module.security_groups.msk_connect_sg_id
-  private_subnet_ids    = var.private_subnet_ids
+  private_subnet_ids    = local.private_subnet_ids
   msk_connect_role_arn  = module.iam.msk_connect_role_arn
   kafkaconnect_version  = var.kafkaconnect_version
   min_workers           = var.msk_connect_min_workers
@@ -411,7 +442,7 @@ module "msk_connect_source_2" {
   custom_plugin_name    = var.msk_connect_custom_plugin_name
   bootstrap_servers     = module.msk.bootstrap_brokers_iam
   msk_connect_sg_id     = module.security_groups.msk_connect_sg_id
-  private_subnet_ids    = var.private_subnet_ids
+  private_subnet_ids    = local.private_subnet_ids
   msk_connect_role_arn  = module.iam.msk_connect_role_arn
   kafkaconnect_version  = var.kafkaconnect_version
   min_workers           = var.msk_connect_min_workers
@@ -472,7 +503,7 @@ module "msk_connect_sink" {
   custom_plugin_name    = var.msk_connect_sink_plugin_name
   bootstrap_servers     = module.msk.bootstrap_brokers_iam
   msk_connect_sg_id     = module.security_groups.msk_connect_sg_id
-  private_subnet_ids    = var.private_subnet_ids
+  private_subnet_ids    = local.private_subnet_ids
   msk_connect_role_arn  = module.iam.msk_connect_role_arn
   kafkaconnect_version  = var.kafkaconnect_version
   min_workers           = var.msk_connect_min_workers
@@ -519,7 +550,7 @@ module "msk_connect_sink_attendance" {
   custom_plugin_name    = var.msk_connect_sink_plugin_name
   bootstrap_servers     = module.msk.bootstrap_brokers_iam
   msk_connect_sg_id     = module.security_groups.msk_connect_sg_id
-  private_subnet_ids    = var.private_subnet_ids
+  private_subnet_ids    = local.private_subnet_ids
   msk_connect_role_arn  = module.iam.msk_connect_role_arn
   kafkaconnect_version  = var.kafkaconnect_version
   min_workers           = var.msk_connect_min_workers
@@ -566,7 +597,7 @@ module "msk_connect_sink_lms" {
   custom_plugin_name    = var.msk_connect_sink_plugin_name
   bootstrap_servers     = module.msk.bootstrap_brokers_iam
   msk_connect_sg_id     = module.security_groups.msk_connect_sg_id
-  private_subnet_ids    = var.private_subnet_ids
+  private_subnet_ids    = local.private_subnet_ids
   msk_connect_role_arn  = module.iam.msk_connect_role_arn
   kafkaconnect_version  = var.kafkaconnect_version
   min_workers           = var.msk_connect_min_workers
@@ -613,7 +644,7 @@ module "msk_connect_sink_section_enrollments" {
   custom_plugin_name    = var.msk_connect_sink_plugin_name
   bootstrap_servers     = module.msk.bootstrap_brokers_iam
   msk_connect_sg_id     = module.security_groups.msk_connect_sg_id
-  private_subnet_ids    = var.private_subnet_ids
+  private_subnet_ids    = local.private_subnet_ids
   msk_connect_role_arn  = module.iam.msk_connect_role_arn
   kafkaconnect_version  = var.kafkaconnect_version
   min_workers           = var.msk_connect_min_workers
@@ -660,7 +691,7 @@ module "msk_connect_sink_term_log" {
   custom_plugin_name    = var.msk_connect_sink_plugin_name
   bootstrap_servers     = module.msk.bootstrap_brokers_iam
   msk_connect_sg_id     = module.security_groups.msk_connect_sg_id
-  private_subnet_ids    = var.private_subnet_ids
+  private_subnet_ids    = local.private_subnet_ids
   msk_connect_role_arn  = module.iam.msk_connect_role_arn
   kafkaconnect_version  = var.kafkaconnect_version
   min_workers           = var.msk_connect_min_workers

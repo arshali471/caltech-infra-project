@@ -28,31 +28,78 @@ variable "project" {
   default     = "caltech"
 }
 
-# ---- Existing VPC -----------------------------------------------------------
+# ---- VPC --------------------------------------------------------------------
+# Two modes:
+#   create_vpc = true   → module.vpc builds a fresh VPC (uses vpc_cidr + AZ vars)
+#   create_vpc = false  → use the existing VPC ID + subnet IDs below
+# ----------------------------------------------------------------------------
+
+variable "create_vpc" {
+  description = "If true, Terraform creates a new VPC + subnets via module.vpc. If false, uses the existing vpc_id and *_subnet_ids variables."
+  type        = bool
+  default     = false
+}
+
+variable "vpc_cidr" {
+  description = "CIDR block for the new VPC (only used when create_vpc = true)"
+  type        = string
+  default     = "10.0.0.0/16"
+}
+
+variable "availability_zones" {
+  description = "AZs to deploy into when create_vpc = true (one subnet per AZ)"
+  type        = list(string)
+  default     = ["us-west-2a", "us-west-2b", "us-west-2c"]
+}
+
+variable "public_subnet_cidrs" {
+  description = "Public subnet CIDRs when create_vpc = true (one per AZ)"
+  type        = list(string)
+  default     = ["10.0.1.0/24", "10.0.2.0/24", "10.0.3.0/24"]
+}
+
+variable "private_subnet_cidrs" {
+  description = "Private subnet CIDRs when create_vpc = true (one per AZ)"
+  type        = list(string)
+  default     = ["10.0.11.0/24", "10.0.12.0/24", "10.0.13.0/24"]
+}
+
+variable "enable_nat_gateway" {
+  description = "Create a NAT Gateway for private subnets (only used when create_vpc = true)"
+  type        = bool
+  default     = true
+}
+
+# ---- Existing VPC (used when create_vpc = false) ----------------------------
 
 variable "vpc_id" {
-  description = "ID of the existing VPC to deploy into"
+  description = "ID of the existing VPC to deploy into (ignored when create_vpc = true)"
   type        = string
+  default     = ""
 }
 
 variable "public_subnet_ids" {
-  description = "Public subnet IDs (EC2 — needs internet access)"
+  description = "Public subnet IDs (ignored when create_vpc = true)"
   type        = list(string)
+  default     = []
 }
 
 variable "private_subnet_ids" {
-  description = "Private subnet IDs (Aurora, ElastiCache, MSK Connect workers)"
+  description = "Private subnet IDs (ignored when create_vpc = true)"
   type        = list(string)
+  default     = []
 }
 
 variable "msk_subnet_ids" {
-  description = "Three private subnet IDs in 3 different AZs — one per MSK broker"
+  description = "MSK broker subnet IDs in 3 AZs (ignored when create_vpc = true — module.vpc subnets are used)"
   type        = list(string)
+  default     = []
 }
 
 variable "elasticache_subnet_ids" {
-  description = "Two private subnet IDs with free IPs for ElastiCache Serverless VPC endpoints"
+  description = "ElastiCache subnet IDs (ignored when create_vpc = true — module.vpc private subnets are used)"
   type        = list(string)
+  default     = []
 }
 
 # ---- Network ports ----------------------------------------------------------
