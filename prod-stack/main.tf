@@ -116,7 +116,7 @@ module "vpc_endpoints" {
   vpc_id                 = local.vpc_id
   aws_region             = var.aws_region
   subnet_ids             = local.public_subnet_ids
-  public_route_table_ids = var.create_vpc ? [module.vpc[0].public_route_table_id] : tolist(data.aws_route_tables.public[0].ids)
+  public_route_table_ids = var.create_vpc ? [module.vpc[0].public_route_table_id] : tolist(data.aws_route_tables.public.ids)
   tags                   = var.tags
 }
 
