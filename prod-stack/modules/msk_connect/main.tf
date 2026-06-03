@@ -16,15 +16,15 @@ resource "aws_cloudwatch_log_group" "this" {
 resource "aws_mskconnect_worker_configuration" "this" {
   name = "${var.name}-${var.connector_name_suffix}-worker-config"
 
-  # `connector.client.config.override.policy=All` allows the connector to
-  # override producer.*, consumer.*, and admin.* client settings — required
-  # for properties like producer.override.compression.type / batch.size / linger.ms
+  # NOTE: MSK Connect rejects `connector.client.config.override.policy` as an
+  # "Unsupported key" — this means `producer.override.*` / `consumer.override.*`
+  # settings cannot be used inside connector_configuration. Tune via the
+  # Kafka broker / topic level instead if needed.
   properties_file_content = <<-PROPS
     key.converter=${var.key_converter}
     key.converter.schemas.enable=${var.converter_schemas_enabled}
     value.converter=${var.value_converter}
     value.converter.schemas.enable=${var.converter_schemas_enabled}
-    connector.client.config.override.policy=All
   PROPS
 }
 

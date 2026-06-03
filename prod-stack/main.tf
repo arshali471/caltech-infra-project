@@ -374,9 +374,9 @@ module "msk_connect" {
     "database.dbname"                          = var.aurora_source_db_name
     "topic.prefix"                             = var.debezium_topic_prefix
     "plugin.name"                              = var.debezium_plugin_name
-    "slot.name"                                = var.debezium_slot_name
+    "slot.name"                                = "${var.debezium_slot_name}_1"
     "slot.drop.on.stop"                        = "false"
-    "publication.name"                         = var.debezium_publication_name
+    "publication.name"                         = "${var.debezium_publication_name}_1"
     "publication.autocreate.mode"              = "all_tables"
     "snapshot.mode"                            = var.debezium_snapshot_mode
     "schema.include.list"                      = var.debezium_schema_include_list
@@ -387,9 +387,6 @@ module "msk_connect" {
     "max.queue.size"                           = "200000"
     "max.batch.size"                           = "20000"
     "poll.interval.ms"                         = "100"
-    "producer.override.compression.type"       = "lz4"
-    "producer.override.batch.size"             = "262144"
-    "producer.override.linger.ms"              = "20"
     "transforms"                               = "unwrap"
     "transforms.unwrap.type"                   = "io.debezium.transforms.ExtractNewRecordState"
     "transforms.unwrap.add.headers"            = "op,ts_ms,source.ts_ms,before.external_sourced_id,before.student_id,before.term_id,before.student_enrollment_id,before.section_id"
@@ -435,9 +432,9 @@ module "msk_connect_source_2" {
     "database.dbname"                          = var.aurora_source_db_name
     "topic.prefix"                             = var.debezium_topic_prefix
     "plugin.name"                              = var.debezium_plugin_name
-    "slot.name"                                = var.debezium_slot_name
+    "slot.name"                                = "${var.debezium_slot_name}_2"
     "slot.drop.on.stop"                        = "false"
-    "publication.name"                         = var.debezium_publication_name
+    "publication.name"                         = "${var.debezium_publication_name}_2"
     "publication.autocreate.mode"              = "all_tables"
     "snapshot.mode"                            = var.debezium_snapshot_mode
     "schema.include.list"                      = var.debezium_schema_include_list
@@ -448,9 +445,6 @@ module "msk_connect_source_2" {
     "max.queue.size"                           = "200000"
     "max.batch.size"                           = "20000"
     "poll.interval.ms"                         = "100"
-    "producer.override.compression.type"       = "lz4"
-    "producer.override.batch.size"             = "262144"
-    "producer.override.linger.ms"              = "20"
     "transforms"                               = "unwrap"
     "transforms.unwrap.type"                   = "io.debezium.transforms.ExtractNewRecordState"
     "transforms.unwrap.add.headers"            = "op,ts_ms,source.ts_ms,before.external_sourced_id,before.student_id,before.term_id,before.student_enrollment_id,before.section_id"
