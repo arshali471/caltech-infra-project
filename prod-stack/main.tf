@@ -333,15 +333,23 @@ module "ec2_redis_sink" {
 }
 
 ###############################################################################
-# Step 9 — MSK Connect + Debezium (Phase 4 — CDC Connector)
+# Step 9 — MSK Connect + Debezium (Phase 4 — CDC Connectors)
 # PREREQUISITE: Upload Debezium ZIP to s3://$(terraform output -raw s3_plugins_bucket)/plugins/
+#
+# TWO source connectors split the tables to parallelise CDC throughput:
+#   • Connector -1 : student_enrollment, student_lms
+#   • Connector -2 : section_enrollments, student_attendance, student_term_log
+#
+# Each connector uses its own PostgreSQL replication slot (slots are exclusive).
 ###############################################################################
+
+# ---- Source Connector 1 -----------------------------------------------------
 
 module "msk_connect" {
   source = "./modules/msk_connect"
   name   = local.name
 
-  connector_name_suffix = "debezium-postgres-source-connector"
+  connector_name_suffix = "debezium-postgres-source-connector-1"
   custom_plugin_name    = var.msk_connect_custom_plugin_name
   bootstrap_servers     = module.msk.bootstrap_brokers_iam
   msk_connect_sg_id     = module.security_groups.msk_connect_sg_id
@@ -372,13 +380,77 @@ module "msk_connect" {
     "publication.autocreate.mode"              = "all_tables"
     "snapshot.mode"                            = var.debezium_snapshot_mode
     "schema.include.list"                      = var.debezium_schema_include_list
-    "table.include.list"                       = var.debezium_table_include_list
+    "table.include.list"                       = "public.student_enrollment,public.student_lms"
     "heartbeat.interval.ms"                    = tostring(var.debezium_heartbeat_interval_ms)
     "decimal.handling.mode"                    = "double"
     "time.precision.mode"                      = "connect"
-    "max.queue.size"                           = "30000"
-    "max.batch.size"                           = "5000"
-    "poll.interval.ms"                         = "200"
+    "max.queue.size"                           = "200000"
+    "max.batch.size"                           = "20000"
+    "poll.interval.ms"                         = "100"
+    "producer.override.compression.type"       = "lz4"
+    "producer.override.batch.size"             = "262144"
+    "producer.override.linger.ms"              = "20"
+    "transforms"                               = "unwrap"
+    "transforms.unwrap.type"                   = "io.debezium.transforms.ExtractNewRecordState"
+    "transforms.unwrap.add.headers"            = "op,ts_ms,source.ts_ms,before.external_sourced_id,before.student_id,before.term_id,before.student_enrollment_id,before.section_id"
+    "transforms.unwrap.drop.tombstones"        = "false"
+    "transforms.unwrap.delete.handling.mode"   = "drop"
+    "key.converter"                            = "org.apache.kafka.connect.json.JsonConverter"
+    "key.converter.schemas.enable"             = "false"
+    "value.converter"                          = "org.apache.kafka.connect.json.JsonConverter"
+    "value.converter.schemas.enable"           = "false"
+  }
+
+  tags = var.tags
+}
+
+# ---- Source Connector 2 -----------------------------------------------------
+
+module "msk_connect_source_2" {
+  source = "./modules/msk_connect"
+  name   = local.name
+
+  connector_name_suffix = "debezium-postgres-source-connector-2"
+  custom_plugin_name    = var.msk_connect_custom_plugin_name
+  bootstrap_servers     = module.msk.bootstrap_brokers_iam
+  msk_connect_sg_id     = module.security_groups.msk_connect_sg_id
+  private_subnet_ids    = var.private_subnet_ids
+  msk_connect_role_arn  = module.iam.msk_connect_role_arn
+  kafkaconnect_version  = var.kafkaconnect_version
+  min_workers           = var.msk_connect_min_workers
+  max_workers           = var.msk_connect_max_workers
+  mcu_count             = var.msk_connect_mcu_count
+  scale_in_cpu_pct      = var.msk_connect_scale_in_cpu_pct
+  scale_out_cpu_pct     = var.msk_connect_scale_out_cpu_pct
+
+  converter_schemas_enabled = false
+
+  connector_configuration = {
+    "connector.class"                          = "io.debezium.connector.postgresql.PostgresConnector"
+    "tasks.max"                                = tostring(var.debezium_tasks_max)
+    "database.hostname"                        = module.aurora_source.endpoint
+    "database.port"                            = tostring(var.postgres_port)
+    "database.user"                            = var.aurora_source_master_username
+    "database.password"                        = module.secrets.aurora_source_password
+    "database.dbname"                          = var.aurora_source_db_name
+    "topic.prefix"                             = var.debezium_topic_prefix
+    "plugin.name"                              = var.debezium_plugin_name
+    "slot.name"                                = var.debezium_slot_name
+    "slot.drop.on.stop"                        = "false"
+    "publication.name"                         = var.debezium_publication_name
+    "publication.autocreate.mode"              = "all_tables"
+    "snapshot.mode"                            = var.debezium_snapshot_mode
+    "schema.include.list"                      = var.debezium_schema_include_list
+    "table.include.list"                       = "public.section_enrollments,public.student_attendance,public.student_term_log"
+    "heartbeat.interval.ms"                    = tostring(var.debezium_heartbeat_interval_ms)
+    "decimal.handling.mode"                    = "double"
+    "time.precision.mode"                      = "connect"
+    "max.queue.size"                           = "200000"
+    "max.batch.size"                           = "20000"
+    "poll.interval.ms"                         = "100"
+    "producer.override.compression.type"       = "lz4"
+    "producer.override.batch.size"             = "262144"
+    "producer.override.linger.ms"              = "20"
     "transforms"                               = "unwrap"
     "transforms.unwrap.type"                   = "io.debezium.transforms.ExtractNewRecordState"
     "transforms.unwrap.add.headers"            = "op,ts_ms,source.ts_ms,before.external_sourced_id,before.student_id,before.term_id,before.student_enrollment_id,before.section_id"
