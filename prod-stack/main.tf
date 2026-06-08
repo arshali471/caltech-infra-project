@@ -367,20 +367,37 @@ module "ec2_redis_sink" {
 # Step 9 — MSK Connect + Debezium (Phase 4 — CDC Connectors)
 # PREREQUISITE: Upload Debezium ZIP to s3://$(terraform output -raw s3_plugins_bucket)/plugins/
 #
-# TWO source connectors split the tables to parallelise CDC throughput:
-#   • Connector -1 : student_enrollment, student_lms
-#   • Connector -2 : section_enrollments, student_attendance, student_term_log
+# FIVE source connectors — one per source table. Each has its own dedicated
+# PostgreSQL replication slot + publication so CDC for each table is fully
+# isolated and independently restartable.
 #
-# Each connector uses its own PostgreSQL replication slot (slots are exclusive).
+#   Connector -1 → student_enrollment    (slot_1 / publication_1)
+#   Connector -2 → student_lms           (slot_2 / publication_2)
+#   Connector -3 → section_enrollments   (slot_3 / publication_3)
+#   Connector -4 → student_attendance    (slot_4 / publication_4)
+#   Connector -5 → student_term_log      (slot_5 / publication_5)
+#
+# All 5 connectors share the same custom plugin, bootstrap, role, and SMT.
+# Defined as a single map iterated via for_each to keep the code DRY.
 ###############################################################################
 
-# ---- Source Connector 1 -----------------------------------------------------
+locals {
+  debezium_source_connectors = {
+    "1" = "public.student_enrollment"
+    "2" = "public.student_lms"
+    "3" = "public.section_enrollments"
+    "4" = "public.student_attendance"
+    "5" = "public.student_term_log"
+  }
+}
 
 module "msk_connect" {
   source = "./modules/msk_connect"
-  name   = local.name
 
-  connector_name_suffix = "debezium-postgres-source-connector-1"
+  for_each = local.debezium_source_connectors
+
+  name                  = local.name
+  connector_name_suffix = "debezium-postgres-source-connector-${each.key}"
   custom_plugin_name    = var.msk_connect_custom_plugin_name
   bootstrap_servers     = module.msk.bootstrap_brokers_iam
   msk_connect_sg_id     = module.security_groups.msk_connect_sg_id
@@ -396,95 +413,37 @@ module "msk_connect" {
   converter_schemas_enabled = false
 
   connector_configuration = {
-    "connector.class"                          = "io.debezium.connector.postgresql.PostgresConnector"
-    "tasks.max"                                = tostring(var.debezium_tasks_max)
-    "database.hostname"                        = module.aurora_source.endpoint
-    "database.port"                            = tostring(var.postgres_port)
-    "database.user"                            = var.aurora_source_master_username
-    "database.password"                        = module.secrets.aurora_source_password
-    "database.dbname"                          = var.aurora_source_db_name
-    "topic.prefix"                             = var.debezium_topic_prefix
-    "plugin.name"                              = var.debezium_plugin_name
-    "slot.name"                                = "${var.debezium_slot_name}_1"
-    "slot.drop.on.stop"                        = "false"
-    "publication.name"                         = "${var.debezium_publication_name}_1"
-    "publication.autocreate.mode"              = "all_tables"
-    "snapshot.mode"                            = var.debezium_snapshot_mode
-    "schema.include.list"                      = var.debezium_schema_include_list
-    "table.include.list"                       = "public.student_enrollment,public.student_lms"
-    "heartbeat.interval.ms"                    = tostring(var.debezium_heartbeat_interval_ms)
-    "decimal.handling.mode"                    = "double"
-    "time.precision.mode"                      = "connect"
-    "max.queue.size"                           = "200000"
-    "max.batch.size"                           = "20000"
-    "poll.interval.ms"                         = "100"
-    "transforms"                               = "unwrap"
-    "transforms.unwrap.type"                   = "io.debezium.transforms.ExtractNewRecordState"
-    "transforms.unwrap.add.headers"            = "op,ts_ms,source.ts_ms,before.external_sourced_id,before.student_id,before.term_id,before.student_enrollment_id,before.section_id"
-    "transforms.unwrap.drop.tombstones"        = "false"
-    "transforms.unwrap.delete.handling.mode"   = "drop"
-    "key.converter"                            = "org.apache.kafka.connect.json.JsonConverter"
-    "key.converter.schemas.enable"             = "false"
-    "value.converter"                          = "org.apache.kafka.connect.json.JsonConverter"
-    "value.converter.schemas.enable"           = "false"
-  }
-
-  tags = var.tags
-}
-
-# ---- Source Connector 2 -----------------------------------------------------
-
-module "msk_connect_source_2" {
-  source = "./modules/msk_connect"
-  name   = local.name
-
-  connector_name_suffix = "debezium-postgres-source-connector-2"
-  custom_plugin_name    = var.msk_connect_custom_plugin_name
-  bootstrap_servers     = module.msk.bootstrap_brokers_iam
-  msk_connect_sg_id     = module.security_groups.msk_connect_sg_id
-  private_subnet_ids    = local.private_subnet_ids
-  msk_connect_role_arn  = module.iam.msk_connect_role_arn
-  kafkaconnect_version  = var.kafkaconnect_version
-  min_workers           = var.msk_connect_min_workers
-  max_workers           = var.msk_connect_max_workers
-  mcu_count             = var.msk_connect_mcu_count
-  scale_in_cpu_pct      = var.msk_connect_scale_in_cpu_pct
-  scale_out_cpu_pct     = var.msk_connect_scale_out_cpu_pct
-
-  converter_schemas_enabled = false
-
-  connector_configuration = {
-    "connector.class"                          = "io.debezium.connector.postgresql.PostgresConnector"
-    "tasks.max"                                = tostring(var.debezium_tasks_max)
-    "database.hostname"                        = module.aurora_source.endpoint
-    "database.port"                            = tostring(var.postgres_port)
-    "database.user"                            = var.aurora_source_master_username
-    "database.password"                        = module.secrets.aurora_source_password
-    "database.dbname"                          = var.aurora_source_db_name
-    "topic.prefix"                             = var.debezium_topic_prefix
-    "plugin.name"                              = var.debezium_plugin_name
-    "slot.name"                                = "${var.debezium_slot_name}_2"
-    "slot.drop.on.stop"                        = "false"
-    "publication.name"                         = "${var.debezium_publication_name}_2"
-    "publication.autocreate.mode"              = "all_tables"
-    "snapshot.mode"                            = var.debezium_snapshot_mode
-    "schema.include.list"                      = var.debezium_schema_include_list
-    "table.include.list"                       = "public.section_enrollments,public.student_attendance,public.student_term_log"
-    "heartbeat.interval.ms"                    = tostring(var.debezium_heartbeat_interval_ms)
-    "decimal.handling.mode"                    = "double"
-    "time.precision.mode"                      = "connect"
-    "max.queue.size"                           = "200000"
-    "max.batch.size"                           = "20000"
-    "poll.interval.ms"                         = "100"
-    "transforms"                               = "unwrap"
-    "transforms.unwrap.type"                   = "io.debezium.transforms.ExtractNewRecordState"
-    "transforms.unwrap.add.headers"            = "op,ts_ms,source.ts_ms,before.external_sourced_id,before.student_id,before.term_id,before.student_enrollment_id,before.section_id"
-    "transforms.unwrap.drop.tombstones"        = "false"
-    "transforms.unwrap.delete.handling.mode"   = "drop"
-    "key.converter"                            = "org.apache.kafka.connect.json.JsonConverter"
-    "key.converter.schemas.enable"             = "false"
-    "value.converter"                          = "org.apache.kafka.connect.json.JsonConverter"
-    "value.converter.schemas.enable"           = "false"
+    "connector.class"                        = "io.debezium.connector.postgresql.PostgresConnector"
+    "tasks.max"                              = tostring(var.debezium_tasks_max)
+    "database.hostname"                      = module.aurora_source.endpoint
+    "database.port"                          = tostring(var.postgres_port)
+    "database.user"                          = var.aurora_source_master_username
+    "database.password"                      = module.secrets.aurora_source_password
+    "database.dbname"                        = var.aurora_source_db_name
+    "topic.prefix"                           = var.debezium_topic_prefix
+    "plugin.name"                            = var.debezium_plugin_name
+    "slot.name"                              = "${var.debezium_slot_name}_${each.key}"
+    "slot.drop.on.stop"                      = "false"
+    "publication.name"                       = "${var.debezium_publication_name}_${each.key}"
+    "publication.autocreate.mode"            = "all_tables"
+    "snapshot.mode"                          = var.debezium_snapshot_mode
+    "schema.include.list"                    = var.debezium_schema_include_list
+    "table.include.list"                     = each.value
+    "heartbeat.interval.ms"                  = tostring(var.debezium_heartbeat_interval_ms)
+    "decimal.handling.mode"                  = "double"
+    "time.precision.mode"                    = "connect"
+    "max.queue.size"                         = "200000"
+    "max.batch.size"                         = "20000"
+    "poll.interval.ms"                       = "100"
+    "transforms"                             = "unwrap"
+    "transforms.unwrap.type"                 = "io.debezium.transforms.ExtractNewRecordState"
+    "transforms.unwrap.add.headers"          = "op,ts_ms,source.ts_ms,before.external_sourced_id,before.student_id,before.term_id,before.student_enrollment_id,before.section_id"
+    "transforms.unwrap.drop.tombstones"      = "false"
+    "transforms.unwrap.delete.handling.mode" = "drop"
+    "key.converter"                          = "org.apache.kafka.connect.json.JsonConverter"
+    "key.converter.schemas.enable"           = "false"
+    "value.converter"                        = "org.apache.kafka.connect.json.JsonConverter"
+    "value.converter.schemas.enable"         = "false"
   }
 
   tags = var.tags

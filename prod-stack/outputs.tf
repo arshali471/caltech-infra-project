@@ -54,5 +54,12 @@ output "s3_data_lake_bucket" { value = module.s3.data_lake_bucket_name }
 output "s3_logs_bucket"      { value = module.s3.logs_bucket_name }
 
 # ---- MSK Connect -----------------------------------------------------------
-output "debezium_plugin_arn"   { value = module.msk_connect.plugin_arn }
-output "debezium_connector_arn"{ value = module.msk_connect.connector_arn }
+output "debezium_plugin_arn" {
+  description = "Custom plugin ARN (same plugin used by all 5 source connectors)"
+  value       = module.msk_connect["1"].plugin_arn
+}
+
+output "debezium_connector_arns" {
+  description = "ARN of each Debezium source connector, keyed by table suffix (1–5)"
+  value       = { for k, m in module.msk_connect : k => m.connector_arn }
+}
