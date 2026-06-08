@@ -1,4 +1,4 @@
-###############################################################################
+  ###############################################################################
 # modules/aurora_source_limitless — Aurora PostgreSQL Limitless Database
 #
 # WORKAROUND: AWS provider <= v5.100.0 always sends engine_mode="provisioned"
@@ -101,9 +101,25 @@ resource "null_resource" "cluster" {
     when        = destroy
     interpreter = ["bash", "-c"]
     command     = <<-EOT
+      # Disable deletion protection first so the delete call won't be blocked.
+      aws rds modify-db-cluster \
+        --db-cluster-identifier ${self.triggers.cluster_id} \
+        --no-deletion-protection \
+        --apply-immediately \
+        --region ${self.triggers.aws_region} 2>/dev/null || true
+
+      # Issue the delete (returns immediately — deletion is async).
       aws rds delete-db-cluster \
         --db-cluster-identifier ${self.triggers.cluster_id} \
         --skip-final-snapshot \
+        --region ${self.triggers.aws_region} 2>/dev/null || true
+
+      # Block until the cluster is fully gone, otherwise the subnet group
+      # deletion (next in the destroy order) will fail with
+      # InvalidDBSubnetGroupStateFault: "still using it".
+      echo "Waiting for cluster ${self.triggers.cluster_id} to be fully deleted..."
+      aws rds wait db-cluster-deleted \
+        --db-cluster-identifier ${self.triggers.cluster_id} \
         --region ${self.triggers.aws_region} 2>/dev/null || true
     EOT
   }
@@ -147,9 +163,27 @@ resource "null_resource" "shard_group" {
     when        = destroy
     interpreter = ["bash", "-c"]
     command     = <<-EOT
+      # Issue the delete (returns immediately).
       aws rds delete-db-shard-group \
         --db-shard-group-identifier ${self.triggers.shard_id} \
         --region ${self.triggers.aws_region} 2>/dev/null || true
+
+      # Poll until the shard group is fully gone, otherwise the cluster
+      # delete (next in the destroy order) will fail because the cluster
+      # still has an active shard group attached.
+      echo "Waiting for shard group ${self.triggers.shard_id} to be fully deleted..."
+      for i in $(seq 1 120); do
+        STATUS=$(aws rds describe-db-shard-groups \
+          --db-shard-group-identifier ${self.triggers.shard_id} \
+          --region ${self.triggers.aws_region} \
+          --query "DBShardGroups[0].Status" --output text 2>/dev/null || echo "DELETED")
+        if [ "$STATUS" = "DELETED" ] || [ -z "$STATUS" ] || [ "$STATUS" = "None" ]; then
+          echo "Shard group is gone."
+          break
+        fi
+        echo "  status=$STATUS, retrying in 15s... ($i/120)"
+        sleep 15
+      done
     EOT
   }
 
