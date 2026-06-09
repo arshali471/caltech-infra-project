@@ -394,19 +394,9 @@ locals {
     "5" = "public.student_term_log"
   }
 
-  # Per-connector subnet override (key = connector suffix, value = list of subnets).
-  # Connectors NOT listed here fall back to local.msk_connect_subnet_ids.
-  # Connector 5 uses a freshly-created subnet (subnet-0e525948c54e72b45, 64 free
-  # IPs) plus the 2 existing MSK Connect subnets — for AZ diversity and headroom.
-  # The default subnets were exhausted by connectors 1-4, so connector 5 lands
-  # its ENIs in the new subnet instead.
-  msk_connect_subnet_override = {
-    "5" = [
-      "subnet-0e525948c54e72b45",    # NEW subnet, 64 free IPs — primary placement
-      "subnet-09fbbd79068ad5555",    # existing
-      "subnet-069266bf3b71d537e",    # existing
-    ]
-  }
+  # Per-connector subnet override — empty since all 5 connectors now use the
+  # same subnets (msk_connect_subnet_ids: new 64-IP subnet + 069 subnet for AZ).
+  msk_connect_subnet_override = {}
 }
 
 module "msk_connect" {
