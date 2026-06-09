@@ -396,11 +396,16 @@ locals {
 
   # Per-connector subnet override (key = connector suffix, value = list of subnets).
   # Connectors NOT listed here fall back to local.msk_connect_subnet_ids.
-  # Connector 5 uses ALL 3 MSK subnets so it can pull IPs from the 3rd subnet
-  # (subnet-0afa40d43201113c7) which has 2 free IPs — the 2 default subnets were
-  # exhausted by connectors 1-4 (8 ENIs used vs 9 IPs available).
+  # Connector 5 uses a freshly-created subnet (subnet-0e525948c54e72b45, 64 free
+  # IPs) plus the 2 existing MSK Connect subnets — for AZ diversity and headroom.
+  # The default subnets were exhausted by connectors 1-4, so connector 5 lands
+  # its ENIs in the new subnet instead.
   msk_connect_subnet_override = {
-    "5" = local.msk_subnet_ids
+    "5" = [
+      "subnet-0e525948c54e72b45",    # NEW subnet, 64 free IPs — primary placement
+      "subnet-09fbbd79068ad5555",    # existing
+      "subnet-069266bf3b71d537e",    # existing
+    ]
   }
 }
 
