@@ -113,12 +113,8 @@ msk_connect_custom_plugin_name = "caltech-poc-debezium-postgresql-source-connect
 msk_connect_sink_plugin_name   = "caltech-poc-postgres-sink-connector-plugin"
 sink_topics                    = "caltech_poc_10.public.student_enrollment"
 sink_table_name_format         = "student_enrollment"
-# Worker counts dropped to 1/1 (no autoscaling) to keep ENI consumption predictable:
-#   10 connectors (5 source + 5 sink) × 1 worker = 10 ENIs total
-# Available IPs in msk_connect_subnet_ids: 9 (3 + 6). Plan headroom is tight —
-# free up more IPs in those subnets if you raise these counts.
-msk_connect_min_workers        = 1
-msk_connect_max_workers        = 1
+msk_connect_min_workers        = 2
+msk_connect_max_workers        = 4
 msk_connect_mcu_count          = 1
 msk_connect_scale_in_cpu_pct   = 20
 msk_connect_scale_out_cpu_pct  = 80

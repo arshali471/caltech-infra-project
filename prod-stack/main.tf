@@ -393,6 +393,15 @@ locals {
     "4" = "public.student_attendance"
     "5" = "public.student_term_log"
   }
+
+  # Per-connector subnet override (key = connector suffix, value = list of subnets).
+  # Connectors NOT listed here fall back to local.msk_connect_subnet_ids.
+  # Connector 5 uses ALL 3 MSK subnets so it can pull IPs from the 3rd subnet
+  # (subnet-0afa40d43201113c7) which has 2 free IPs — the 2 default subnets were
+  # exhausted by connectors 1-4 (8 ENIs used vs 9 IPs available).
+  msk_connect_subnet_override = {
+    "5" = local.msk_subnet_ids
+  }
 }
 
 module "msk_connect" {
@@ -405,7 +414,7 @@ module "msk_connect" {
   custom_plugin_name    = var.msk_connect_custom_plugin_name
   bootstrap_servers     = module.msk.bootstrap_brokers_iam
   msk_connect_sg_id     = module.security_groups.msk_connect_sg_id
-  private_subnet_ids    = local.msk_connect_subnet_ids
+  private_subnet_ids    = lookup(local.msk_connect_subnet_override, each.key, local.msk_connect_subnet_ids)
   msk_connect_role_arn  = module.iam.msk_connect_role_arn
   kafkaconnect_version  = var.kafkaconnect_version
   min_workers           = var.msk_connect_min_workers
