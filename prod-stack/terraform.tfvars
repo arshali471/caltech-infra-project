@@ -39,19 +39,17 @@ private_subnet_ids     = ["subnet-0afa40d43201113c7", "subnet-09fbbd79068ad5555"
 msk_subnet_ids         = ["subnet-0afa40d43201113c7", "subnet-09fbbd79068ad5555", "subnet-069266bf3b71d537e"]
 elasticache_subnet_ids = ["subnet-09fbbd79068ad5555", "subnet-069266bf3b71d537e"]
 
-# MSK Connect worker ENI placement — using ONLY the new subnet (64 free IPs).
-# This isolates all 5 connectors' workers in a single subnet/AZ to eliminate
-# IP exhaustion in the smaller existing subnets.
+# MSK Connect worker ENI placement.
+# AWS REQUIRES 2–3 subnets per connector (single subnet is rejected with
+# "The number of subnets per VPC must be between 2 and 3").
 #
-# Capacity check:
-#   5 connectors × max 4 workers = 20 ENIs ⇢ fits easily in 64 IPs.
-#
-# Note: MSK Connect historically required 2+ subnets across different AZs, but
-# recent updates allow single-AZ deployments. If AWS rejects a single subnet
-# with "must specify subnets in at least 2 Availability Zones", add a second
-# subnet from the same AZ (or a different AZ).
+# Minimal 2-subnet config — biggest IP pool, lowest risk of exhaustion:
+#   • subnet-0e525948c54e72b45 (NEW, 64 free IPs)  — primary worker placement
+#   • subnet-069266bf3b71d537e (us-west-2c, 6 free IPs) — AZ partner
+# Total: 70 IPs for 5 connectors × max 4 workers = 20 ENIs (3.5x headroom).
 msk_connect_subnet_ids = [
-  "subnet-0e525948c54e72b45",   # NEW — 64 free IPs (single AZ)
+  "subnet-0e525948c54e72b45",   # NEW — 64 free IPs
+  "subnet-069266bf3b71d537e",   # us-west-2c — 6 free IPs (AZ partner)
 ]
 
 # ---- Network ports ---------------------------------------------------------
