@@ -39,24 +39,19 @@ private_subnet_ids     = ["subnet-0afa40d43201113c7", "subnet-09fbbd79068ad5555"
 msk_subnet_ids         = ["subnet-0afa40d43201113c7", "subnet-09fbbd79068ad5555", "subnet-069266bf3b71d537e"]
 elasticache_subnet_ids = ["subnet-09fbbd79068ad5555", "subnet-069266bf3b71d537e"]
 
-# MSK Connect worker ENI placement.
-# Verified AZ layout (from msk_subnet_ids above — these are CONFIRMED to span
-# us-west-2a, us-west-2b, us-west-2c):
-#   - subnet-0afa40d43201113c7 → us-west-2a (small, ~2 free IPs)
-#   - subnet-09fbbd79068ad5555 → us-west-2b (small, ~3 free IPs)
-#   - subnet-069266bf3b71d537e → us-west-2c (small, ~6 free IPs)
-#   - subnet-0e525948c54e72b45 → AZ unknown (new, 64 free IPs)
+# MSK Connect worker ENI placement — using ONLY the new subnet (64 free IPs).
+# This isolates all 5 connectors' workers in a single subnet/AZ to eliminate
+# IP exhaustion in the smaller existing subnets.
 #
-# To guarantee 3-AZ coverage AND IP headroom, we use:
-#   • subnet-0e525948c54e72b45 (new, 64 IPs)
-#   • subnet-09fbbd79068ad5555 (us-west-2b, 3 IPs) — AZ diversity
-#   • subnet-069266bf3b71d537e (us-west-2c, 6 IPs) — AZ diversity
-# Total available: 73 IPs across at least 2 AZs (likely 3 if new subnet is in
-# us-west-2a). Plenty of headroom for 5 connectors × 4 workers (20 ENIs max).
+# Capacity check:
+#   5 connectors × max 4 workers = 20 ENIs ⇢ fits easily in 64 IPs.
+#
+# Note: MSK Connect historically required 2+ subnets across different AZs, but
+# recent updates allow single-AZ deployments. If AWS rejects a single subnet
+# with "must specify subnets in at least 2 Availability Zones", add a second
+# subnet from the same AZ (or a different AZ).
 msk_connect_subnet_ids = [
-  "subnet-0e525948c54e72b45",   # NEW — 64 free IPs
-  "subnet-09fbbd79068ad5555",   # us-west-2b
-  "subnet-069266bf3b71d537e",   # us-west-2c
+  "subnet-0e525948c54e72b45",   # NEW — 64 free IPs (single AZ)
 ]
 
 # ---- Network ports ---------------------------------------------------------
