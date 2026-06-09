@@ -77,6 +77,10 @@ locals {
   private_subnet_ids      = var.create_vpc ? module.vpc[0].private_subnet_ids  : var.private_subnet_ids
   msk_subnet_ids          = var.create_vpc ? module.vpc[0].private_subnet_ids  : var.msk_subnet_ids
   elasticache_subnet_ids  = var.create_vpc ? module.vpc[0].private_subnet_ids  : var.elasticache_subnet_ids
+
+  # MSK Connect needs predictable IP usage. Use dedicated subnets if specified,
+  # otherwise fall back to private_subnet_ids.
+  msk_connect_subnet_ids  = length(var.msk_connect_subnet_ids) > 0 ? var.msk_connect_subnet_ids : local.private_subnet_ids
 }
 
 ###############################################################################
@@ -401,7 +405,7 @@ module "msk_connect" {
   custom_plugin_name    = var.msk_connect_custom_plugin_name
   bootstrap_servers     = module.msk.bootstrap_brokers_iam
   msk_connect_sg_id     = module.security_groups.msk_connect_sg_id
-  private_subnet_ids    = local.private_subnet_ids
+  private_subnet_ids    = local.msk_connect_subnet_ids
   msk_connect_role_arn  = module.iam.msk_connect_role_arn
   kafkaconnect_version  = var.kafkaconnect_version
   min_workers           = var.msk_connect_min_workers
@@ -462,7 +466,7 @@ module "msk_connect_sink" {
   custom_plugin_name    = var.msk_connect_sink_plugin_name
   bootstrap_servers     = module.msk.bootstrap_brokers_iam
   msk_connect_sg_id     = module.security_groups.msk_connect_sg_id
-  private_subnet_ids    = local.private_subnet_ids
+  private_subnet_ids    = local.msk_connect_subnet_ids
   msk_connect_role_arn  = module.iam.msk_connect_role_arn
   kafkaconnect_version  = var.kafkaconnect_version
   min_workers           = var.msk_connect_min_workers
@@ -509,7 +513,7 @@ module "msk_connect_sink_attendance" {
   custom_plugin_name    = var.msk_connect_sink_plugin_name
   bootstrap_servers     = module.msk.bootstrap_brokers_iam
   msk_connect_sg_id     = module.security_groups.msk_connect_sg_id
-  private_subnet_ids    = local.private_subnet_ids
+  private_subnet_ids    = local.msk_connect_subnet_ids
   msk_connect_role_arn  = module.iam.msk_connect_role_arn
   kafkaconnect_version  = var.kafkaconnect_version
   min_workers           = var.msk_connect_min_workers
@@ -556,7 +560,7 @@ module "msk_connect_sink_lms" {
   custom_plugin_name    = var.msk_connect_sink_plugin_name
   bootstrap_servers     = module.msk.bootstrap_brokers_iam
   msk_connect_sg_id     = module.security_groups.msk_connect_sg_id
-  private_subnet_ids    = local.private_subnet_ids
+  private_subnet_ids    = local.msk_connect_subnet_ids
   msk_connect_role_arn  = module.iam.msk_connect_role_arn
   kafkaconnect_version  = var.kafkaconnect_version
   min_workers           = var.msk_connect_min_workers
@@ -603,7 +607,7 @@ module "msk_connect_sink_section_enrollments" {
   custom_plugin_name    = var.msk_connect_sink_plugin_name
   bootstrap_servers     = module.msk.bootstrap_brokers_iam
   msk_connect_sg_id     = module.security_groups.msk_connect_sg_id
-  private_subnet_ids    = local.private_subnet_ids
+  private_subnet_ids    = local.msk_connect_subnet_ids
   msk_connect_role_arn  = module.iam.msk_connect_role_arn
   kafkaconnect_version  = var.kafkaconnect_version
   min_workers           = var.msk_connect_min_workers
@@ -650,7 +654,7 @@ module "msk_connect_sink_term_log" {
   custom_plugin_name    = var.msk_connect_sink_plugin_name
   bootstrap_servers     = module.msk.bootstrap_brokers_iam
   msk_connect_sg_id     = module.security_groups.msk_connect_sg_id
-  private_subnet_ids    = local.private_subnet_ids
+  private_subnet_ids    = local.msk_connect_subnet_ids
   msk_connect_role_arn  = module.iam.msk_connect_role_arn
   kafkaconnect_version  = var.kafkaconnect_version
   min_workers           = var.msk_connect_min_workers

@@ -39,6 +39,12 @@ private_subnet_ids     = ["subnet-0afa40d43201113c7", "subnet-09fbbd79068ad5555"
 msk_subnet_ids         = ["subnet-0afa40d43201113c7", "subnet-09fbbd79068ad5555", "subnet-069266bf3b71d537e"]
 elasticache_subnet_ids = ["subnet-09fbbd79068ad5555", "subnet-069266bf3b71d537e"]
 
+# MSK Connect worker ENI placement — uses ONLY the two subnets with sufficient
+# free IPs (subnet-09fbbd79068ad5555 = 3 free, subnet-069266bf3b71d537e = 6 free
+# = 9 IPs total across 2 AZs). The 0afa40d43201113c7 subnet (only 2 free) is
+# excluded to avoid IP exhaustion. Each connector worker consumes 1 ENI.
+msk_connect_subnet_ids = ["subnet-09fbbd79068ad5555", "subnet-069266bf3b71d537e"]
+
 # ---- Network ports ---------------------------------------------------------
 msk_port       = 9098
 msk_scram_port = 9096
@@ -107,8 +113,12 @@ msk_connect_custom_plugin_name = "caltech-poc-debezium-postgresql-source-connect
 msk_connect_sink_plugin_name   = "caltech-poc-postgres-sink-connector-plugin"
 sink_topics                    = "caltech_poc_10.public.student_enrollment"
 sink_table_name_format         = "student_enrollment"
-msk_connect_min_workers        = 2
-msk_connect_max_workers        = 4
+# Worker counts dropped to 1/1 (no autoscaling) to keep ENI consumption predictable:
+#   10 connectors (5 source + 5 sink) × 1 worker = 10 ENIs total
+# Available IPs in msk_connect_subnet_ids: 9 (3 + 6). Plan headroom is tight —
+# free up more IPs in those subnets if you raise these counts.
+msk_connect_min_workers        = 1
+msk_connect_max_workers        = 1
 msk_connect_mcu_count          = 1
 msk_connect_scale_in_cpu_pct   = 20
 msk_connect_scale_out_cpu_pct  = 80

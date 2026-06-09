@@ -102,6 +102,12 @@ variable "elasticache_subnet_ids" {
   default     = []
 }
 
+variable "msk_connect_subnet_ids" {
+  description = "Subnets for MSK Connect worker ENIs. Pick subnets with sufficient free IPs (each worker = 1 ENI). Falls back to private_subnet_ids if empty."
+  type        = list(string)
+  default     = []
+}
+
 # ---- Network ports ----------------------------------------------------------
 
 variable "msk_port" {
