@@ -37,12 +37,25 @@ resource "aws_mskconnect_connector" "this" {
   kafkaconnect_version = var.kafkaconnect_version
 
   capacity {
-    autoscaling {
-      mcu_count        = var.mcu_count
-      min_worker_count = var.min_workers
-      max_worker_count = var.max_workers
-      scale_in_policy  { cpu_utilization_percentage = var.scale_in_cpu_pct }
-      scale_out_policy { cpu_utilization_percentage = var.scale_out_cpu_pct }
+    # When min == max → use provisioned_capacity (fixed worker count, no autoscaling).
+    # When min  < max → use autoscaling (MSK Connect requires max > min, else rejects).
+    dynamic "provisioned_capacity" {
+      for_each = var.min_workers == var.max_workers ? [1] : []
+      content {
+        mcu_count    = var.mcu_count
+        worker_count = var.min_workers
+      }
+    }
+
+    dynamic "autoscaling" {
+      for_each = var.min_workers != var.max_workers ? [1] : []
+      content {
+        mcu_count        = var.mcu_count
+        min_worker_count = var.min_workers
+        max_worker_count = var.max_workers
+        scale_in_policy  { cpu_utilization_percentage = var.scale_in_cpu_pct }
+        scale_out_policy { cpu_utilization_percentage = var.scale_out_cpu_pct }
+      }
     }
   }
 
