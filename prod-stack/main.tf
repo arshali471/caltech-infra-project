@@ -247,40 +247,6 @@ module "aurora_source" {
 }
 
 ###############################################################################
-# Step 7b — Aurora Source Limitless (PostgreSQL Limitless Database variant)
-###############################################################################
-
-module "aurora_source_limitless" {
-  source = "./modules/aurora_source_limitless"
-  name   = local.name
-
-  engine            = var.aurora_engine
-  engine_version    = var.aurora_limitless_engine_version
-  db_name           = var.aurora_source_db_name
-  master_username   = var.aurora_source_master_username
-  master_password   = module.secrets.aurora_source_password
-  subnet_ids        = local.private_subnet_ids
-  security_group_id = module.security_groups.aurora_source_sg_id
-  kms_key_arn       = module.kms.aurora_key_arn
-  min_acu           = var.aurora_limitless_min_acu
-  max_acu           = var.aurora_limitless_max_acu
-  compute_redundancy = var.aurora_limitless_compute_redundancy
-
-  backup_retention_period      = var.aurora_backup_retention_period
-  preferred_backup_window      = var.aurora_preferred_backup_window
-  preferred_maintenance_window = var.aurora_preferred_maintenance_window
-  skip_final_snapshot          = var.aurora_skip_final_snapshot
-  deletion_protection          = var.aurora_deletion_protection
-  cloudwatch_logs_exports      = var.aurora_cloudwatch_logs_exports
-
-  max_replication_slots = var.aurora_source_max_replication_slots
-  max_wal_senders       = var.aurora_source_max_wal_senders
-  wal_sender_timeout_ms = var.aurora_source_wal_sender_timeout_ms
-
-  tags = var.tags
-}
-
-###############################################################################
 # Step 11 — Aurora Sink (Phase 5 — PostgreSQL Sink Consumer Target)
 ###############################################################################
 

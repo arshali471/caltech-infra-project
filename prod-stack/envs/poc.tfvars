@@ -88,12 +88,6 @@ aurora_source_max_replication_slots = 10
 aurora_source_max_wal_senders       = 10
 aurora_source_wal_sender_timeout_ms = 0
 
-# ---- Aurora Source Limitless (variant) -------------------------------------
-aurora_limitless_engine_version     = "16.13-limitless"
-aurora_limitless_min_acu            = 16
-aurora_limitless_max_acu            = 32
-aurora_limitless_compute_redundancy = 0
-
 # ---- Aurora Sink (PostgreSQL consumer target) ------------------------------
 aurora_sink_db_name         = "sinkdb"
 aurora_sink_master_username = "dbadmin"
@@ -117,9 +111,6 @@ msk_broker_volume_size_gb = 1000
 kafkaconnect_version           = "3.7.x"
 debezium_plugin_s3_key         = "plugins/debezium-debezium-connector-postgresql-3.2.6-1.zip"
 msk_connect_custom_plugin_name = "caltech-poc-debezium-postgresql-source-connector-plugin"
-msk_connect_sink_plugin_name   = "caltech-poc-postgres-sink-connector-plugin"
-sink_topics                    = "caltech_poc_10.public.student_enrollment"
-sink_table_name_format         = "student_enrollment"
 msk_connect_min_workers        = 2
 msk_connect_max_workers        = 4
 msk_connect_mcu_count          = 1

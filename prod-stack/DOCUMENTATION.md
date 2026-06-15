@@ -10,10 +10,9 @@
 |---|---|
 | **EC2 app servers** | **3** instances — `caltech-poc-app-server` on **`m6i.2xlarge`** (8 vCPU, 32 GiB); `caltech-poc-pg-sink-app-server` + `caltech-poc-redis-sink-app-server` on `t3.xlarge` (4 vCPU, 16 GiB); all KMS-encrypted EBS |
 | **Aurora PostgreSQL Source** | 1 cluster (Serverless v2, 0.5–16 ACUs) with logical replication |
-| **Aurora PostgreSQL Source Limitless** | 1 cluster + 1 shard group (`16.13-limitless`, 16–32 ACUs, sharded) |
 | **Aurora PostgreSQL Sink** | 1 cluster (Serverless v2, 0.5–16 ACUs) |
 | **MSK Provisioned Kafka** | **3 brokers** across 3 AZs (`kafka.m5.2xlarge`, 1000 GB EBS each, Kafka 3.9.x) |
-| **MSK Connect** | 6 connectors — 1 Debezium source + 5 JDBC sinks |
+| **MSK Connect** | 5 Debezium source connectors (one per CDC table) |
 | **ElastiCache Redis** | Serverless cache (TLS always-on, KMS encrypted) |
 
 ---
@@ -26,9 +25,9 @@
 4. [Security Group Matrix](#4-security-group-matrix)
 5. [IAM Roles & Trust Relationships](#5-iam-roles--trust-relationships)
 6. [Encryption Strategy](#6-encryption-strategy)
-7. [Aurora Source vs Sink vs Limitless](#7-aurora-source-vs-sink-vs-limitless)
+7. [Aurora Source vs Sink](#7-aurora-source-vs-sink)
 8. [MSK Provisioned Cluster](#8-msk-provisioned-cluster)
-9. [MSK Connect — Source & Sink Connectors](#9-msk-connect--source--sink-connectors)
+9. [MSK Connect — Debezium Source Connectors](#9-msk-connect--debezium-source-connectors)
 10. [ElastiCache Redis](#10-elasticache-redis)
 11. [EC2 App Servers](#11-ec2-app-servers)
 12. [State Management](#12-state-management)
@@ -197,25 +196,7 @@ Aurora PostgreSQL **Serverless v2** with logical replication enabled — the sta
 | Deletion protection | **ON** |
 | CloudWatch logs | `postgresql` |
 
-### 2.9 `aurora_source_limitless`
-
-Aurora PostgreSQL **Limitless Database** variant. Same purpose (CDC source) but uses horizontal sharding.
-
-| Setting | Value |
-|---|---|
-| Cluster identifier | `caltech-poc-aurora-source-limitless` |
-| Engine version | `16.13-limitless` |
-| Cluster scalability type | `limitless` |
-| Storage type | `aurora-iopt1` (I/O-Optimized — required) |
-| Shard group | `caltech-poc-aurora-source-limitless-shard` |
-| Min/Max ACUs (shard) | 16 / 32 |
-| Compute redundancy | 0 (single AZ — change to 1 or 2 for HA) |
-| Performance Insights | **Required** by Limitless (enabled with `performance-insights-retention-period 7`) |
-| Enhanced Monitoring | **Required** by Limitless (60s interval, dedicated IAM role) |
-
-**Implementation note:** The AWS Terraform provider (as of v5.100.0) always sends `engine_mode=provisioned` to the API, which Aurora Limitless rejects. This module bypasses the bug by creating the cluster and shard group via `aws rds create-db-cluster` and `aws rds create-db-shard-group` in `null_resource` provisioners. Cluster info is then exposed via a `data "aws_rds_cluster"` lookup. Destroy provisioners run the corresponding `delete` commands.
-
-### 2.10 `aurora_sink`
+### 2.9 `aurora_sink`
 
 Aurora PostgreSQL Serverless v2 — JDBC sink target.
 
@@ -248,23 +229,22 @@ Provisioned MSK cluster with both SASL/SCRAM and SASL/IAM authentication.
 
 ### 2.12 `msk_connect`
 
-Generic MSK Connect connector module. Reused **6×** from `main.tf` — one Debezium source + 5 JDBC sinks. Each instantiation passes the full `connector_configuration` map.
+Generic MSK Connect connector module. Invoked **5×** via `for_each` in `main.tf` — one Debezium source connector per CDC table, each with its own replication slot and publication for fault isolation.
 
-| Module call | Connector name suffix | Plugin |
+| `for_each` key | Connector name suffix | Table |
 |---|---|---|
-| `module.msk_connect` | `debezium-postgres-source-connector` | Debezium PostgreSQL |
-| `module.msk_connect_sink` | `postgres-sink-connector-student-enrollment` | Confluent JDBC Sink |
-| `module.msk_connect_sink_attendance` | `postgres-sink-connector-student-attendance` | Confluent JDBC Sink |
-| `module.msk_connect_sink_lms` | `postgres-sink-connector-student-lms` | Confluent JDBC Sink |
-| `module.msk_connect_sink_section_enrollments` | `postgres-sink-connector-section-enrollments` | Confluent JDBC Sink |
-| `module.msk_connect_sink_term_log` | `postgres-sink-connector-student-term-log` | Confluent JDBC Sink |
+| `"1"` | `debezium-postgres-source-connector-1` | `public.student_enrollment` |
+| `"2"` | `debezium-postgres-source-connector-2` | `public.student_lms` |
+| `"3"` | `debezium-postgres-source-connector-3` | `public.section_enrollments` |
+| `"4"` | `debezium-postgres-source-connector-4` | `public.student_attendance` |
+| `"5"` | `debezium-postgres-source-connector-5` | `public.student_term_log` |
 
 **Worker config (per connector):**
 - `key.converter` = `org.apache.kafka.connect.json.JsonConverter`
 - `value.converter` = `org.apache.kafka.connect.json.JsonConverter`
-- `schemas.enable` = `false` (matches source connector output — sinks would fail with `JsonConverter requires schema and payload` if `true`)
+- `schemas.enable` = `false`
 
-**Capacity:** Autoscaling, 1–2 workers, 1 MCU (vCPU/RAM unit), scale-in at 20% CPU, scale-out at 80% CPU.
+**Capacity:** Autoscaling, 2–4 workers, 1 MCU (vCPU/RAM unit), scale-in at 20% CPU, scale-out at 80% CPU.
 
 ### 2.13 `elasticache`
 
@@ -296,8 +276,8 @@ VPC vpc-0ed44b92f11b73815 (existing — managed outside this stack)
 │       └── S3 Gateway endpoint (public route tables)
 │
 └── Private subnets (3 — across us-west-2a, 2b, 2c)
-    ├── subnet-0afa40d43201113c7  (used by: aurora_source, aurora_sink, aurora_limitless, msk, msk_connect, elasticache)
-    ├── subnet-09fbbd79068ad5555  (used by: aurora_source, aurora_sink, aurora_limitless, msk, msk_connect, elasticache)
+    ├── subnet-0afa40d43201113c7  (used by: aurora_source, aurora_sink, msk, msk_connect, elasticache)
+    ├── subnet-09fbbd79068ad5555  (used by: aurora_source, aurora_sink, msk, msk_connect, elasticache)
     └── subnet-069266bf3b71d537e  (used by: msk only — 3rd AZ for HA)
 ```
 
@@ -344,13 +324,6 @@ VPC vpc-0ed44b92f11b73815 (existing — managed outside this stack)
                   │ - VPC ENI permissions               │
                   └─────────────────────────────────────┘
 
-                  ┌─────────────────────────────────────┐
-                  │ caltech-poc-aurora-source-limitless │
-                  │   -monitoring-role                  │
-                  │ Trust: monitoring.rds.amazonaws.com │
-                  │                                     │
-                  │ - AmazonRDSEnhancedMonitoringRole   │
-                  └─────────────────────────────────────┘
 ```
 
 ---
@@ -361,7 +334,6 @@ VPC vpc-0ed44b92f11b73815 (existing — managed outside this stack)
 |---|---|---|---|
 | EC2 EBS volumes | KMS CMK | n/a | `alias/caltech-poc-ebs` |
 | Aurora Source / Sink | KMS CMK | TLS (`rds.force_ssl=1`) | `alias/caltech-poc-aurora` |
-| Aurora Limitless | KMS CMK | TLS | `alias/caltech-poc-aurora` |
 | MSK Provisioned | KMS CMK | TLS | `alias/caltech-poc-secrets` |
 | ElastiCache | KMS CMK | TLS (always on) | `alias/caltech-poc-redis` |
 | S3 buckets | KMS CMK | TLS | `alias/caltech-poc-s3` |
@@ -371,22 +343,18 @@ All keys have **automatic rotation enabled** (yearly).
 
 ---
 
-## 7. Aurora Source vs Sink vs Limitless
+## 7. Aurora Source vs Sink
 
-| | `aurora_source` | `aurora_sink` | `aurora_source_limitless` |
-|---|---|---|---|
-| Cluster identifier | `caltech-poc-aurora-source` | `caltech-poc-aurora-sink` | `caltech-poc-aurora-source-limitless` |
-| Cluster type | Serverless v2 | Serverless v2 | Limitless (sharded) |
-| Engine version | 16.x | 16.x | 16.13-limitless |
-| `cluster_scalability_type` | (standard, default) | (standard, default) | `limitless` |
-| Capacity model | ACU range (0.5–16) on a single instance | ACU range (0.5–16) on a single instance | ACU range (16–32) on a shard group |
-| Storage type | Aurora Standard | Aurora Standard | Aurora I/O-Optimized (required) |
-| Logical replication | **YES** (`rds.logical_replication=1`) | NO | Default (custom param group not supported in current code) |
-| Performance Insights | Optional | Optional | **Required** |
-| Enhanced Monitoring | Optional | Optional | **Required** |
-| Provisioned via | Terraform `aws_rds_cluster` | Terraform `aws_rds_cluster` | AWS CLI via `null_resource` (provider bug workaround) |
-| Provisioning time | 5–15 min | 5–15 min | 20–40 min |
-| Use case | Debezium CDC source | JDBC sink target | High-throughput sharded source variant |
+| | `aurora_source` | `aurora_sink` |
+|---|---|---|
+| Cluster identifier | `caltech-poc-aurora-source` | `caltech-poc-aurora-sink` |
+| Cluster type | Serverless v2 | Serverless v2 |
+| Engine version | 17.x | 17.x |
+| Capacity model | ACU range (0.5–16) on a single instance | ACU range (0.5–16) on a single instance |
+| Storage type | Aurora Standard | Aurora Standard |
+| Logical replication | **YES** (`rds.logical_replication=1`) | NO |
+| Provisioning time | 5–15 min | 5–15 min |
+| Use case | Debezium CDC source | Downstream consumer DB target |
 
 ---
 
@@ -430,7 +398,7 @@ terraform output msk_bootstrap_brokers          # SCRAM endpoint (port 9096) —
 
 ---
 
-## 9. MSK Connect — Source & Sink Connectors
+## 9. MSK Connect — Debezium Source Connectors
 
 ### Source connector (Debezium)
 
@@ -447,23 +415,6 @@ terraform output msk_bootstrap_brokers          # SCRAM endpoint (port 9096) —
 | Headers added | `op, ts_ms, source.ts_ms, before.<pk_cols>` |
 | `schemas.enable` | `false` (key + value) |
 | Tasks max | 1 (Debezium PostgreSQL caps at 1 internally) |
-
-### Sink connectors (Confluent JDBC Sink, ×5)
-
-| Setting | Value |
-|---|---|
-| Connector class | `io.confluent.connect.jdbc.JdbcSinkConnector` |
-| Plugin name | `caltech-poc-postgres-sink-connector-plugin` (uploaded to S3) |
-| Connection URL | `jdbc:postgresql://<aurora_sink_endpoint>:5432/<aurora_sink_db_name>` |
-| Dialect | `PostgreSqlDatabaseDialect` |
-| `auto.create` | `true` |
-| `auto.evolve` | `true` |
-| `insert.mode` | `upsert` |
-| `delete.enabled` | `true` |
-| `pk.mode` | `record_key` |
-| `schemas.enable` | `false` (matches source — JsonConverter would otherwise reject schema-less messages) |
-| `batch.size` | 5000 |
-| Tasks max | 10 (Kafka caps at partition count of source topic) |
 
 ---
 
@@ -535,7 +486,7 @@ terraform state show module.aurora_source.aws_rds_cluster.this
 terraform state mv module.old_name module.new_name
 
 # Remove a resource from state (does NOT delete in AWS)
-terraform state rm module.aurora_source_limitless.null_resource.cluster
+terraform state rm module.<some_module>.<resource_type>.<name>
 
 # Import an existing AWS resource into state
 terraform import module.aurora_sink.aws_rds_cluster.this caltech-poc-aurora-sink
@@ -578,27 +529,12 @@ terraform apply \
 ### Restart a failed MSK Connect connector
 
 ```bash
-# Easiest path — replace the connector resource
+# Replace the connector resource for one of the 5 source connectors
+# (replace "1" with the connector index 1..5)
 terraform apply \
-  -replace=module.msk_connect_sink.aws_mskconnect_connector.this \
-  -target=module.msk_connect_sink
+  -replace='module.msk_connect["1"].aws_mskconnect_connector.this' \
+  -target='module.msk_connect["1"]'
 ```
-
-### Check Limitless cluster status
-
-```bash
-aws rds describe-db-clusters \
-  --db-cluster-identifier caltech-poc-aurora-source-limitless \
-  --region us-west-2 --profile default \
-  --query "DBClusters[0].Status"
-
-aws rds describe-db-shard-groups \
-  --db-shard-group-identifier caltech-poc-aurora-source-limitless-shard \
-  --region us-west-2 --profile default \
-  --query "DBShardGroups[0].Status"
-```
-
-Both should return `available` when ready.
 
 ### Verify SG rules
 
@@ -623,7 +559,6 @@ terraform output
 | Service | Backup mechanism | Retention | Recovery |
 |---|---|---|---|
 | Aurora Source / Sink | Automated snapshots | 7 days (configurable) | Restore via `aws rds restore-db-cluster-from-snapshot` |
-| Aurora Limitless | Automated snapshots | 7 days | Same as above |
 | MSK | EBS snapshots (AWS-managed) | n/a (broker-level — for HA) | Multi-broker replication (factor 3) |
 | ElastiCache Serverless | Automated daily snapshots | Configurable | Restore on new cluster from snapshot |
 | Terraform state | S3 versioning + DynamoDB PITR | Forever (S3) / 35 days (DynamoDB) | Restore S3 object version |
@@ -636,14 +571,6 @@ terraform output
 ---
 
 ## 15. Known Issues & Workarounds
-
-### Aurora Limitless: provider sends `engine_mode=provisioned`
-
-**Symptom:** `InvalidParameterCombination: Aurora Limitless Database doesn't support engine modes`
-
-**Cause:** AWS Terraform provider (≤ v5.100.0) has `Default: "provisioned"` on `engine_mode` in the `aws_rds_cluster` schema. The default value is sent to the API even when the field is omitted from HCL.
-
-**Fix:** The `aurora_source_limitless` module creates the cluster via AWS CLI in `null_resource` provisioners, bypassing the broken Terraform resource entirely.
 
 ### MSK Connect: failed worker config can't be deleted
 
@@ -660,14 +587,6 @@ terraform output
 **Cause:** Someone manually added the rule via the AWS console — it now collides with Terraform-managed rules.
 
 **Fix:** Either delete the manual rule in the console, or remove the rule from the Terraform code (and let the manual rule stand).
-
-### Sink connector: `JsonConverter requires schema and payload`
-
-**Symptom:** Tasks fail immediately on first message consumption.
-
-**Cause:** Sink connector has `schemas.enable=true` but the source connector publishes schema-less JSON (because the source uses `ExtractNewRecordState` SMT with `schemas.enable=false`).
-
-**Fix:** All sink connectors are configured with `converter_schemas_enabled = false` to match. If you change one, change both.
 
 ### MSK SG: 9096 from EC2 already exists
 
@@ -687,17 +606,16 @@ Approximate monthly cost in `us-west-2` (USD, on-demand pricing, May 2026):
 |---|---|---|
 | Aurora Source (Serverless v2) | 0.5 ACU avg × $0.12/ACU-hr × 730 hr | ~$44 |
 | Aurora Sink (Serverless v2) | 0.5 ACU avg × $0.12/ACU-hr × 730 hr | ~$44 |
-| Aurora Limitless | 16 ACU min × $0.12/ACU-hr × 730 hr | **~$1,400** |
 | MSK Provisioned | 3 × kafka.m5.2xlarge × ~$0.50/hr × 730 hr | ~$1,095 |
-| MSK Connect | 1–2 workers × 1 MCU × ~$0.11/MCU-hr × 730 hr | ~$80 |
+| MSK Connect | 5 connectors × 2–4 workers × 1 MCU × ~$0.11/MCU-hr × 730 hr | ~$800–1,600 |
 | EC2 — app-server (m6i.2xlarge) | 1 × ~$0.384/hr × 730 hr | ~$280 |
 | EC2 — pg/redis sinks (×2 t3.xlarge) | 2 × ~$0.166/hr × 730 hr | ~$243 |
 | ElastiCache Serverless | Min 1 GB + 1000 ECPU/s | ~$80 |
 | EBS storage (MSK) | 3 × 1000 GB × $0.10/GB-mo | ~$300 |
 | Data transfer | Variable | $50–200 |
-| **Total (rough)** | | **~$3,673/month** |
+| **Total (rough)** | | **~$2,936–3,936/month** |
 
-> **Limitless is still a significant cost driver.** Min ACU is currently 16 (~$1,400/mo idle baseline). If the POC needs to reduce cost further, lower `aurora_limitless_min_acu` in `terraform.tfvars` (note: AWS imposes a hard floor on Limitless min ACU — verify the lowest allowed in your region).
+> **MSK is the biggest cost driver.** Brokers (~$1,095) + EBS (~$300) + Connect workers (~$800–1,600) account for ~75% of the bill. To cut cost, consider MSK Serverless (no idle broker fee), smaller broker instance types, or smaller EBS volumes per broker.
 
 ---
 
@@ -705,10 +623,9 @@ Approximate monthly cost in `us-west-2` (USD, on-demand pricing, May 2026):
 
 | Date | Change |
 |---|---|
-| 2026-05-29 | Updated README to include `aurora_source_limitless`, 3 EC2 modules, 5 sink connectors. Created `DOCUMENTATION.md`. |
-| 2026-05-27 | Added Aurora Limitless module with `null_resource` workaround for provider bug. |
+| 2026-06-15 | Removed `aurora_source_limitless` module and all 5 JDBC sink connectors from code. Migrated POC state lock from DynamoDB to S3 native (`use_lockfile`). Added `ec2_in_private_subnet` flag for dev/qas/prod private-subnet placement. Refactored 5 Debezium source connectors to use `for_each`. |
+| 2026-05-29 | Created `DOCUMENTATION.md`. |
 | 2026-05-25 | Added VPC endpoints for STS/SecretsManager. Fixed MSK SG to allow 9092/9094 from MSK Connect. |
-| 2026-05-22 | Genericized `msk_connect` module. Added 5 JDBC sink connectors. Fixed schema mismatch (`schemas.enable=false` on sinks). |
 | 2026-05-22 | Added 2nd and 3rd EC2 instances (`ec2_pg_sink`, `ec2_redis_sink`). |
 | 2026-05-21 | Fixed MSK IAM topic/group ARNs (added `-msk` suffix to cluster name). |
 | 2026-05-20 | Removed Kinesis Firehose. MSK uses CloudWatch logs only. |

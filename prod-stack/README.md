@@ -31,8 +31,7 @@
 | **VPC + Subnets** | Optional — built fresh by `module.vpc` when `create_vpc = true`, or reuses an existing VPC when `false` |
 | **EC2 app servers** (×3) | `app-server` (transaction simulator) + `pg-sink-app-server` + `redis-sink-app-server`. No public IPs — SSM Session Manager access only. Subnet tier controlled by `ec2_in_private_subnet` (public for legacy POC, private for DEV/QAS/PROD) |
 | **Aurora PostgreSQL Source** | Serverless v2 with logical replication enabled — feeds Debezium |
-| **Aurora PostgreSQL Source Limitless** *(optional)* | Sharded variant (PG `16.13-limitless`), for high-throughput CDC scenarios |
-| **Aurora PostgreSQL Sink** | Serverless v2 — receives Kafka events via 5 JDBC sink connectors |
+| **Aurora PostgreSQL Sink** | Serverless v2 — kept as a target DB for downstream consumers |
 | **MSK Provisioned** | Apache Kafka 3.9.x, multi-broker across AZs |
 | **MSK Connect** | 5 Debezium source connectors (one per table) — fully isolated replication slots |
 | **ElastiCache Redis** | Serverless cache, TLS always-on |
@@ -296,11 +295,11 @@ If you instead see `subnet_id = "subnet-…public…"` against EC2 — STOP. Con
 │  │                     │   │                      │   │                     │   │                      │   │
 │  │  ┌───────────────┐  │   │ Aurora PostgreSQL    │   │ MSK Connect         │   │ ElastiCache          │   │
 │  │  │  EC2 × 3      │──┼──▶│ Source (Serverless   │──▶│ Debezium Sources    │──▶│ Redis Serverless     │   │
-│  │  │  • app        │  │   │  v2, 16.x)           │   │ (×5, one per table) │   │                      │   │
+│  │  │  • app        │  │   │  v2, 17.x)           │   │ (×5, one per table) │   │                      │   │
 │  │  │  • pg_sink    │  │   │                      │   │                     │   ├──────────────────────┤   │
-│  │  │  • redis_sink │  │   │ Aurora Source        │   │ ▼                   │   │                      │   │
-│  │  └───────────────┘  │   │ Limitless (optional) │   │ MSK Provisioned     │──▶│ Aurora PostgreSQL    │   │
-│  │  VPC Endpoints      │   │ (16.13-limitless)    │   │ Kafka 3.9.x         │   │ Sink Serverless v2   │   │
+│  │  │  • redis_sink │  │   │                      │   │ ▼                   │   │                      │   │
+│  │  └───────────────┘  │   │                      │   │ MSK Provisioned     │──▶│ Aurora PostgreSQL    │   │
+│  │  VPC Endpoints      │   │                      │   │ Kafka 3.9.x         │   │ Sink Serverless v2   │   │
 │  │  (SSM × 3)          │   │                      │   │ 3 Brokers (3 AZs)   │   │                      │   │
 │  └─────────────────────┘   └──────────────────────┘   │ SASL/SCRAM (9096)   │   └──────────────────────┘   │
 │                                                       │ + SASL/IAM (9098)   │                              │
@@ -325,11 +324,11 @@ EC2 ──▶  Aurora Source ──▶  Debezium → MSK (Kafka)  ──┬─�
 ### Deployment phases (left to right)
 
 ```
-PHASE 1 — Foundation          PHASE 2              PHASE 3                  PHASE 4               PHASE 5
-─────────────────────────     ──────────────────   ──────────────────────   ───────────────────   ─────────────────────────
-vpc (optional)                ec2                  aurora_source            msk (Kafka)           elasticache (Redis Sink)
-kms                           ec2_pg_sink     ──▶ aurora_source_limitless ─▶ msk_connect        ─▶ aurora_sink (PG Sink)
-security_groups               ec2_redis_sink                                 (5 source × 1 table)
+PHASE 1 — Foundation          PHASE 2              PHASE 3              PHASE 4               PHASE 5
+─────────────────────────     ──────────────────   ──────────────────   ───────────────────   ─────────────────────────
+vpc (optional)                ec2                  aurora_source        msk (Kafka)           elasticache (Redis target)
+kms                           ec2_pg_sink     ──▶                  ──▶ msk_connect        ─▶ aurora_sink (PG target)
+security_groups               ec2_redis_sink                            (5 source × 1 table)
 vpc_endpoints
 s3
 secrets
@@ -375,11 +374,8 @@ terraform apply -var-file=envs/<env>.tfvars \
 ### Phase 3 — Source databases
 
 ```bash
-# Required — Serverless v2 source for CDC
+# Serverless v2 source for CDC
 terraform apply -var-file=envs/<env>.tfvars -target=module.aurora_source
-
-# Optional — Limitless variant (deploy only when high-throughput sharded CDC is needed)
-terraform apply -var-file=envs/<env>.tfvars -target=module.aurora_source_limitless
 ```
 
 ### Phase 4 — Kafka + CDC pipeline
@@ -421,7 +417,7 @@ terraform apply -var-file=envs/<env>.tfvars
 | 0 — VPC (if used) | 3 min |
 | 1 — Foundation | ~7 min |
 | 2 — App servers | 3 min |
-| 3 — Source DB | 10–15 min (Limitless: +20 min) |
+| 3 — Source DB | 10–15 min |
 | 4 — MSK + Connect | 35–50 min |
 | 5 — Consumers | 10–20 min |
 | **Total** | **~1.5–2 hours** |
@@ -535,10 +531,7 @@ terraform apply -var-file=envs/<env>.tfvars
 # 3. Destroy MSK Connect connectors first (they depend on MSK, Aurora, S3)
 terraform destroy -var-file=envs/<env>.tfvars -target=module.msk_connect
 
-# 4. Destroy Aurora Limitless if deployed (uses null_resource provisioners)
-terraform destroy -var-file=envs/<env>.tfvars -target=module.aurora_source_limitless
-
-# 5. Destroy everything else
+# 4. Destroy everything else
 terraform destroy -var-file=envs/<env>.tfvars
 ```
 
@@ -556,7 +549,6 @@ terraform destroy -var-file=envs/<env>.tfvars
 | `InsufficientFreeAddressesInSubnet` (MSK Connect) | Subnet ran out of IPs for worker ENIs | Update `msk_connect_subnet_ids` in tfvars to a subnet with more free IPs |
 | `BrokerUnreachable` on MSK Connect | MSK SG doesn't allow port 9098 from MSK Connect SG | Re-apply `module.security_groups` |
 | Aurora cluster `Backing-up` blocks delete | Final snapshot in progress | Wait, then re-run destroy |
-| Aurora Limitless `Incompatible-network` | Shard group lost subnet connectivity | Delete shard group via AWS CLI, then re-run destroy |
 | `AccessDenied PutPublicAccessBlock` (S3) | Org SCP enforces it at account level | Expected — script warns and continues |
 | `BucketAlreadyOwnedByYou` | State bucket already exists in your account | Expected — script skips creation |
 | Plan shows resources to destroy you didn't expect | Wrong env active OR variable typo | Verify `./scripts/init.sh --env <env>` output before applying |
