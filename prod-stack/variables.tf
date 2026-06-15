@@ -108,6 +108,12 @@ variable "msk_connect_subnet_ids" {
   default     = []
 }
 
+variable "ec2_in_private_subnet" {
+  description = "If true, all EC2 instances are placed in private subnets (no public IP, SSM-only admin access, outbound internet via NAT). Set true for dev/non-prod per MoM 'no public subnets for core services'."
+  type        = bool
+  default     = false
+}
+
 # ---- Network ports ----------------------------------------------------------
 
 variable "msk_port" {

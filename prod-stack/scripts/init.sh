@@ -2,7 +2,7 @@
 ###############################################################################
 # prod-stack/scripts/init.sh
 #
-# Creates the S3 state bucket + DynamoDB lock table, then runs
+# Creates the S3 state bucket (S3 native locking via use_lockfile=true), then runs
 # terraform init and terraform validate automatically.
 #
 # Compatible with: macOS, Linux, Windows Git Bash (MINGW64), WSL
@@ -37,21 +37,33 @@ step()    { echo -e "\n${BOLD}${CYAN}==> $*${NC}"; }
 
 # ── Parse arguments ───────────────────────────────────────────────────────────
 PROFILE_FLAG=""
+ENV_NAME="poc"  # default — current active environment is the POC
 while [[ $# -gt 0 ]]; do
   case "$1" in
     --profile|-p)
       PROFILE_FLAG="$2"
       shift 2
       ;;
+    --env|-e)
+      ENV_NAME="$2"
+      shift 2
+      ;;
     --help|-h)
-      echo "Usage: $0 [--profile <aws-profile-name>]"
+      echo "Usage: $0 [--env poc|dev|qas|prod] [--profile <aws-profile-name>]"
+      echo ""
+      echo "  --env, -e       Target environment. One of: poc, dev, qas, prod"
+      echo "                  (qas and prod will be added once dev is validated)"
+      echo "                  Default: poc"
+      echo "  --profile, -p   AWS profile name (overrides AWS_PROFILE env var)"
       exit 0
       ;;
     *)
-      error "Unknown argument: $1  (use --profile <name> or set AWS_PROFILE)"
+      error "Unknown argument: $1  (use --env <poc|dev|qas|prod> --profile <name>)"
       ;;
   esac
 done
+
+[[ "${ENV_NAME}" =~ ^(poc|dev|qas|prod)$ ]] || error "Invalid --env value: ${ENV_NAME} (must be one of: poc, dev, qas, prod)"
 
 # ── Resolve AWS profile / credentials ────────────────────────────────────────
 resolve_aws_identity() {
@@ -77,9 +89,9 @@ resolve_aws_identity
 # ── Resolve paths ─────────────────────────────────────────────────────────────
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ROOT_DIR="$(cd "${SCRIPT_DIR}/.." && pwd)"
-BACKEND_HCL="${ROOT_DIR}/backend.hcl"
+BACKEND_HCL="${ROOT_DIR}/envs/${ENV_NAME}.backend.hcl"
 
-[[ -f "${BACKEND_HCL}" ]] || error "backend.hcl not found at ${BACKEND_HCL}"
+[[ -f "${BACKEND_HCL}" ]] || error "backend.hcl not found at ${BACKEND_HCL} (env=${ENV_NAME})"
 
 # ── Read backend.hcl values ───────────────────────────────────────────────────
 # awk-based parser — works on macOS (BSD), Linux (GNU), and Windows Git Bash
@@ -88,11 +100,10 @@ parse_hcl() { awk -F'"' "/^[[:space:]]*$1[[:space:]]*=/ { print \$2; exit }" "${
 STATE_BUCKET=$(parse_hcl "bucket")
 STATE_KEY=$(parse_hcl "key")
 STATE_REGION=$(parse_hcl "region")
-LOCK_TABLE=$(parse_hcl "dynamodb_table")
+USE_LOCKFILE=$(parse_hcl "use_lockfile")
 
 [[ -n "${STATE_BUCKET}" ]] || error "Could not parse 'bucket' from backend.hcl"
 [[ -n "${STATE_REGION}" ]] || error "Could not parse 'region' from backend.hcl"
-[[ -n "${LOCK_TABLE}"   ]] || error "Could not parse 'dynamodb_table' from backend.hcl"
 
 # ── Banner ────────────────────────────────────────────────────────────────────
 echo ""
@@ -103,7 +114,8 @@ echo ""
 info "Credentials  : ${CRED_SOURCE}"
 info "State Bucket : ${STATE_BUCKET}"
 info "State Key    : ${STATE_KEY}"
-info "Lock Table   : ${LOCK_TABLE}"
+info "Environment  : ${ENV_NAME}"
+info "State Locking: S3 native (use_lockfile=${USE_LOCKFILE:-true}, no DynamoDB)"
 info "Region       : ${STATE_REGION}"
 
 # ── Prerequisite checks ───────────────────────────────────────────────────────
@@ -237,46 +249,21 @@ PUBLIC_ACCESS_OUT=$(aws s3api put-public-access-block \
   || warn "PutPublicAccessBlock skipped — likely enforced by org SCP (bucket is still private): ${PUBLIC_ACCESS_OUT}"
 
 
-# ── Create DynamoDB lock table ────────────────────────────────────────────────
-step "DynamoDB lock table: ${LOCK_TABLE}"
-
-TABLE_STATUS=$(aws dynamodb describe-table \
-  --table-name "${LOCK_TABLE}" \
-  --region "${STATE_REGION}" \
-  --query "Table.TableStatus" \
-  --output text 2>/dev/null || echo "NOT_FOUND")
-
-if [[ "${TABLE_STATUS}" == "ACTIVE" ]]; then
-  warn "Table already exists and is ACTIVE — skipping creation"
-else
-  aws dynamodb create-table \
-    --table-name "${LOCK_TABLE}" \
-    --attribute-definitions AttributeName=LockID,AttributeType=S \
-    --key-schema AttributeName=LockID,KeyType=HASH \
-    --billing-mode PAY_PER_REQUEST \
-    --region "${STATE_REGION}"
-
-  info "Waiting for table to become ACTIVE..."
-  aws dynamodb wait table-exists \
-    --table-name "${LOCK_TABLE}" \
-    --region "${STATE_REGION}"
-  success "Table ready: ${LOCK_TABLE}"
-fi
-
-info "Enabling Point-in-Time Recovery..."
-aws dynamodb update-continuous-backups \
-  --table-name "${LOCK_TABLE}" \
-  --point-in-time-recovery-specification PointInTimeRecoveryEnabled=true \
-  --region "${STATE_REGION}" >/dev/null 2>&1 \
-  && success "PITR enabled" \
-  || warn "PITR not enabled (may need extra DynamoDB permissions — non-critical)"
+# ── State locking ─────────────────────────────────────────────────────────────
+# S3 native locking (use_lockfile=true) — no DynamoDB needed.
+# Terraform >=1.10 writes a .tflock object to the same S3 bucket using
+# conditional writes to enforce mutual exclusion. If your old DynamoDB lock
+# table (caltech-terraform-lock) still exists, you can delete it manually
+# from the AWS console — it's no longer referenced.
+step "State locking: S3 native (use_lockfile=true)"
+success "Skipping DynamoDB table creation — using S3 conditional-write locking"
 
 # ── terraform init ────────────────────────────────────────────────────────────
-step "terraform init"
+step "terraform init (env=${ENV_NAME})"
 cd "${ROOT_DIR}"
 
 terraform init \
-  -backend-config=backend.hcl \
+  -backend-config="${BACKEND_HCL}" \
   -upgrade \
   -reconfigure
 
@@ -296,7 +283,8 @@ echo ""
 echo -e "  Credentials : ${CYAN}${CRED_SOURCE}${NC}"
 echo -e "  Account ID  : ${CYAN}${ACCOUNT_ID}${NC}"
 echo -e "  State file  : ${CYAN}s3://${STATE_BUCKET}/${STATE_KEY}${NC}"
-echo -e "  Lock table  : ${CYAN}${LOCK_TABLE} (${STATE_REGION})${NC}"
+echo -e "  Environment : ${CYAN}${ENV_NAME}${NC}"
+echo -e "  State lock  : ${CYAN}S3 native (use_lockfile=true, no DynamoDB)${NC}"
 echo ""
 echo -e "${BOLD}Next — deploy left to right (matches the architecture diagram):${NC}"
 echo ""

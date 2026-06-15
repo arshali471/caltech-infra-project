@@ -15,8 +15,8 @@ variable "subnet_ids" {
   type        = list(string)
 }
 
-variable "public_route_table_ids" {
-  description = "Route table IDs for public subnets — S3 Gateway endpoint adds a route here"
+variable "s3_gateway_route_table_ids" {
+  description = "Route table IDs to associate with the S3 Gateway endpoint. Pass private route tables when EC2 lives in private subnets so S3 is reachable privately."
   type        = list(string)
 }
 

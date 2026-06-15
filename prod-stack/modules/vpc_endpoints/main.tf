@@ -54,14 +54,14 @@ resource "aws_vpc_endpoint" "ssm" {
   tags = merge(var.tags, { Name = "${var.name}-vpce-${each.key}" })
 }
 
-# ---- S3 Gateway Endpoint — public subnets only ------------------------------
-# S3 route for private subnets already exists in the VPC (do not recreate)
+# ---- S3 Gateway Endpoint ----------------------------------------------------
+# Attach to whatever route tables the caller chose (public, private, or both).
 
 resource "aws_vpc_endpoint" "s3" {
   vpc_id            = var.vpc_id
   service_name      = "com.amazonaws.${var.aws_region}.s3"
   vpc_endpoint_type = "Gateway"
-  route_table_ids   = var.public_route_table_ids
+  route_table_ids   = var.s3_gateway_route_table_ids
 
   tags = merge(var.tags, { Name = "${var.name}-vpce-s3" })
 }

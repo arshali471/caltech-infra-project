@@ -81,6 +81,13 @@ locals {
   # MSK Connect needs predictable IP usage. Use dedicated subnets if specified,
   # otherwise fall back to private_subnet_ids.
   msk_connect_subnet_ids  = length(var.msk_connect_subnet_ids) > 0 ? var.msk_connect_subnet_ids : local.private_subnet_ids
+
+  # EC2 placement — private subnet for dev/non-prod (per MoM); public subnet
+  # for current prod (existing VPC). SSM endpoints + NAT handle private access.
+  ec2_subnet_id = var.ec2_in_private_subnet ? local.private_subnet_ids[0] : local.public_subnet_ids[0]
+
+  # VPC endpoints (SSM interface ENIs) follow the same tier as EC2.
+  vpc_endpoint_subnet_ids = var.ec2_in_private_subnet ? local.private_subnet_ids : local.public_subnet_ids
 }
 
 ###############################################################################
@@ -115,13 +122,21 @@ module "security_groups" {
 ###############################################################################
 
 module "vpc_endpoints" {
-  source                 = "./modules/vpc_endpoints"
-  name                   = local.name
-  vpc_id                 = local.vpc_id
-  aws_region             = var.aws_region
-  subnet_ids             = local.public_subnet_ids
-  public_route_table_ids = var.create_vpc ? [module.vpc[0].public_route_table_id] : tolist(data.aws_route_tables.public.ids)
-  tags                   = var.tags
+  source     = "./modules/vpc_endpoints"
+  name       = local.name
+  vpc_id     = local.vpc_id
+  aws_region = var.aws_region
+  subnet_ids = local.vpc_endpoint_subnet_ids
+
+  # Attach S3 gateway endpoint to BOTH route tables when create_vpc=true so
+  # EC2 in private subnets (dev) can reach S3 privately while public-tier
+  # callers (prod existing VPC, or NAT-side traffic) also benefit.
+  s3_gateway_route_table_ids = var.create_vpc ? compact([
+    module.vpc[0].public_route_table_id,
+    module.vpc[0].private_route_table_id,
+  ]) : tolist(data.aws_route_tables.public.ids)
+
+  tags = var.tags
 }
 
 ###############################################################################
@@ -323,7 +338,7 @@ module "ec2" {
 
   ami_id                = var.ec2_ami_id
   instance_type         = var.ec2_app_server_instance_type
-  subnet_id             = local.public_subnet_ids[0]
+  subnet_id             = local.ec2_subnet_id
   key_pair_name         = var.ec2_key_pair_name
   security_group_id     = module.security_groups.ec2_sg_id
   instance_profile_name = module.iam.ec2_instance_profile_name
@@ -341,7 +356,7 @@ module "ec2_pg_sink" {
 
   ami_id                = var.ec2_ami_id
   instance_type         = var.ec2_instance_type
-  subnet_id             = local.public_subnet_ids[0]
+  subnet_id             = local.ec2_subnet_id
   key_pair_name         = var.ec2_key_pair_name
   security_group_id     = module.security_groups.ec2_sg_id
   instance_profile_name = module.iam.ec2_instance_profile_name
@@ -357,7 +372,7 @@ module "ec2_redis_sink" {
 
   ami_id                = var.ec2_ami_id
   instance_type         = var.ec2_instance_type
-  subnet_id             = local.public_subnet_ids[0]
+  subnet_id             = local.ec2_subnet_id
   key_pair_name         = var.ec2_key_pair_name
   security_group_id     = module.security_groups.ec2_sg_id
   instance_profile_name = module.iam.ec2_instance_profile_name
