@@ -1,10 +1,19 @@
 # Backend configuration for the DEV environment.
 # Run: terraform init -reconfigure -backend-config=envs/dev.backend.hcl
 #
-# Same S3 bucket as prod (S3 is global — region of bucket doesn't matter for
-# state storage), but different `key` so dev/prod state files are isolated.
-# Uses S3 native locking (use_lockfile=true) — requires Terraform >= 1.10.
-bucket       = "caltech-terraform-state-342448511503"
+# Client-shared state bucket: tfstate-imss-shared-342448511503-us-west-2
+#   • Bucket lives in us-west-2 (S3 is globally addressable — fine for resources
+#     deployed in us-east-2)
+#   • State file lives under caltech/dev/ so it is isolated from POC and any
+#     other project sharing the bucket
+#   • Lock file is auto-managed at caltech/dev/terraform.tfstate.tflock by S3
+#     conditional writes (no DynamoDB needed; requires Terraform >= 1.10)
+#
+# Override the profile via CLI flag if the client uses a different one, e.g.:
+#   terraform init -backend-config=envs/dev.backend.hcl \
+#                  -backend-config="profile=<client-profile>"
+
+bucket       = "tfstate-imss-shared-342448511503-us-west-2"
 key          = "caltech/dev/terraform.tfstate"
 region       = "us-west-2"
 encrypt      = true
