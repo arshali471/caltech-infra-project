@@ -477,19 +477,23 @@ variable "debezium_heartbeat_interval_ms" {
   default     = 30000
 }
 
-# ---- Oracle source connector (Debezium / LogMiner) --------------------------
+# ---- Oracle source connector (Confluent Oracle CDC / LogMiner) --------------
 # Captures CDC from an external Oracle database reachable from the MSK Connect
 # worker subnets. Disabled by default so envs without an Oracle source
 # (e.g. dev) plan cleanly with no extra config.
+#
+# NOTE: this uses Confluent's LICENSED Oracle CDC connector, not Debezium. The
+# custom plugin must be built from the Confluent Hub ZIP, and var.oracle_confluent_license
+# must hold a valid key — without one the connector stops after a 30-day trial.
 
 variable "enable_oracle_source_connector" {
-  description = "Create the Debezium Oracle source connector"
+  description = "Create the Confluent Oracle CDC source connector"
   type        = bool
   default     = false
 }
 
 variable "oracle_connect_custom_plugin_name" {
-  description = "Name of the existing MSK Connect custom plugin holding the Debezium Oracle connector"
+  description = "Name of the existing MSK Connect custom plugin holding the Confluent Oracle CDC connector"
   type        = string
   default     = ""
 }
@@ -520,7 +524,7 @@ variable "oracle_db_password" {
 }
 
 variable "oracle_db_name" {
-  description = "Oracle CDB (container database) service name"
+  description = "Oracle SID — the CDB (container database) identifier. Maps to oracle.sid"
   type        = string
   default     = ""
 }
@@ -531,43 +535,49 @@ variable "oracle_pdb_name" {
   default     = ""
 }
 
-variable "oracle_connection_adapter" {
-  description = "Debezium Oracle capture adapter (logminer or xstream)"
+variable "oracle_topic_prefix" {
+  description = "Kafka topic prefix for Oracle CDC events. Table topics become <prefix>.<schema>.<table>; the redo log topic becomes <prefix>-redo-log"
   type        = string
-  default     = "logminer"
+  default     = ""
+}
+
+variable "oracle_table_inclusion_regex" {
+  description = <<-DESC
+    Regex matching the FULLY-QUALIFIED Oracle tables to capture. Confluent expects
+    <SID-or-PDB>.<SCHEMA>.<TABLE> — note this includes the PDB/SID, unlike Debezium's
+    schema.table form. Dots inside a literal name must be escaped as [.].
+    Example: EXETEST1[.]EXETER[.]SSS_AREAS
+  DESC
+  type        = string
+  default     = ""
+}
+
+variable "oracle_start_from" {
+  description = "Where the connector begins reading: snapshot (full table snapshot first), current (SCN at startup), or force_current (current SCN, ignoring stored offsets)"
+  type        = string
+  default     = "snapshot"
 
   validation {
-    condition     = contains(["logminer", "xstream"], var.oracle_connection_adapter)
-    error_message = "oracle_connection_adapter must be either \"logminer\" or \"xstream\"."
+    condition     = contains(["snapshot", "current", "force_current"], var.oracle_start_from)
+    error_message = "oracle_start_from must be one of: snapshot, current, force_current."
   }
 }
 
-variable "oracle_topic_prefix" {
-  description = "Kafka topic prefix for Oracle CDC events (must be unique per connector)"
+variable "oracle_confluent_license" {
+  description = "Confluent enterprise license key for the Oracle CDC connector. Empty = 30-day trial, after which the connector STOPS"
   type        = string
   default     = ""
+  sensitive   = true
 }
 
-variable "oracle_table_include_list" {
-  description = "Comma-separated Oracle tables to capture (SCHEMA.TABLE format, uppercase)"
-  type        = string
-  default     = ""
-}
-
-variable "oracle_schema_history_topic" {
-  description = "Internal Kafka topic where the Oracle connector stores DDL schema history"
-  type        = string
-  default     = "schemahistory.oracle"
-}
-
-variable "oracle_snapshot_mode" {
-  description = "Debezium Oracle snapshot mode (initial, initial_only, schema_only, never)"
-  type        = string
-  default     = "initial"
+variable "oracle_emit_tombstone_on_delete" {
+  description = "Emit a null-value tombstone record on delete (needed for log-compacted topics)"
+  type        = bool
+  default     = false
 }
 
 variable "oracle_tasks_max" {
-  description = "Maximum number of Oracle connector tasks (Debezium Oracle supports 1)"
+  description = "Maximum number of Oracle connector tasks"
   type        = number
   default     = 1
 }

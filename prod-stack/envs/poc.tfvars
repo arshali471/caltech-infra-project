@@ -128,28 +128,37 @@ debezium_heartbeat_interval_ms = 30000
 debezium_schema_include_list   = "public"
 debezium_table_include_list    = "public.section_enrollments,public.student_attendance,public.student_enrollment,public.student_lms,public.student_term_log"
 
-# ---- Oracle source connector (Debezium / LogMiner) -------------------------
+# ---- Oracle source connector (Confluent Oracle CDC / LogMiner) -------------
 # Reads CDC from the external Oracle DB at oracle_db_host — NOT managed by this
 # stack. The host must be routable from msk_connect_subnet_ids above.
 #
-# PREREQUISITE: create the custom plugin named below from the Debezium Oracle
-# ZIP (connector + Oracle JDBC driver) in the plugins bucket.
+# PREREQUISITE 1: register the custom plugin named below, built from the
+#   Confluent Hub ZIP (confluentinc/kafka-connect-oracle-cdc) plus orai18n.jar
+#   and aws-msk-iam-auth.jar. This is NOT the Debezium plugin.
+# PREREQUISITE 2: oracle_confluent_license — this connector is licensed and
+#   stops after a 30-day trial without a key.
 enable_oracle_source_connector    = true
-oracle_connect_custom_plugin_name = "caltech-poc-debezium-oracle-source-connector-plugin"
+oracle_connect_custom_plugin_name = "caltech-poc-oracle-cdc-source-connector-plugin"
 
-oracle_db_host            = "10.115.6.11"
-oracle_db_port            = 1920            # non-default listener port (Oracle default is 1521)
-oracle_db_user            = "c##dbzuser"    # common user — required when capturing from a CDB
-oracle_db_password        = "dbz"
-oracle_db_name            = "EXETST1C"      # CDB service name
-oracle_pdb_name           = "EXETEST1"      # PDB name — set to "" for a non-CDB database
-oracle_connection_adapter = "logminer"
+oracle_db_host     = "10.115.6.11"
+oracle_db_port     = 1920         # non-default listener port (Oracle default is 1521)
+oracle_db_user     = "c##dbzuser" # common user — required when capturing from a CDB
+oracle_db_password = "dbz"
+oracle_db_name     = "EXETST1C"   # oracle.sid — the CDB identifier
+oracle_pdb_name    = "EXETEST1"   # PDB name — set to "" for a non-CDB database
 
-oracle_topic_prefix         = "caltech_poc_oracle_test"
-oracle_table_include_list   = "EXETER.SSS_STUDENT_ENROLLMENTS"
-oracle_schema_history_topic = "schemahistory.oracle"
-oracle_snapshot_mode        = "initial"
-oracle_tasks_max            = 1
+oracle_topic_prefix = "caltech_poc_oracle_test"
+
+# Fully-qualified as <PDB>.<SCHEMA>.<TABLE>, dots escaped as [.] — Confluent's
+# regex form. This is NOT interchangeable with Debezium's "EXETER.SSS_AREAS".
+oracle_table_inclusion_regex = "EXETEST1[.]EXETER[.]SSS_AREAS"
+
+oracle_start_from               = "snapshot" # Confluent's equivalent of Debezium snapshot.mode = initial
+oracle_emit_tombstone_on_delete = false
+oracle_tasks_max                = 1
+
+# Leave empty ONLY for the 30-day trial; supply the real key before the POC ends.
+oracle_confluent_license = ""
 
 # ---- S3 lifecycle ----------------------------------------------------------
 data_lake_ia_transition_days      = 30

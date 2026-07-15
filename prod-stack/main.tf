@@ -439,12 +439,16 @@ module "msk_connect" {
 }
 
 ###############################################################################
-# Step 9b — MSK Connect + Debezium Oracle source connector
-# PREREQUISITE: Upload the Debezium Oracle ZIP (connector + Oracle JDBC driver)
-# to s3://$(terraform output -raw s3_plugins_bucket)/plugins/ and create the
-# custom plugin named var.oracle_connect_custom_plugin_name.
+# Step 9b — MSK Connect + Confluent Oracle CDC source connector
 #
-#   Connector → caltech-<env>-debezium-oracle-source-connector
+# PREREQUISITE 1: Build the custom plugin from the Confluent Hub ZIP
+#   (confluentinc/kafka-connect-oracle-cdc) — NOT from Maven Central — with
+#   orai18n.jar and aws-msk-iam-auth added to its lib/ folder, then register it
+#   under the name in var.oracle_connect_custom_plugin_name.
+# PREREQUISITE 2: A Confluent license in var.oracle_confluent_license. This is a
+#   LICENSED connector; with an empty license it runs a 30-day trial then stops.
+#
+#   Connector → caltech-<env>-oracle-source-connector
 #
 # Reads from an EXTERNAL Oracle database (not managed by this stack) over
 # LogMiner. The MSK Connect SG allows all egress, so no SG change is needed —
@@ -455,21 +459,23 @@ module "msk_connect" {
 ###############################################################################
 
 locals {
-  # Debezium's schema-history client is a separate Kafka client from the worker's
-  # producer/consumer and does NOT inherit the cluster's IAM auth. Without these
-  # it cannot authenticate to the IAM-only broker listener.
-  oracle_schema_history_iam_auth = {
-    for pair in setproduct(["producer", "consumer"], [
+  # The Confluent connector opens two Kafka clients of its own — one for the
+  # license topic, one to read back the redo-log topic — and neither inherits the
+  # cluster's IAM auth from MSK Connect. Without explicit SASL config they cannot
+  # authenticate to the IAM-only broker listener.
+  # Requires aws-msk-iam-auth on the plugin classpath to load IAMLoginModule.
+  oracle_kafka_iam_auth = {
+    for pair in setproduct(["confluent.topic", "redo.log.consumer"], [
       ["security.protocol", "SASL_SSL"],
       ["sasl.mechanism", "AWS_MSK_IAM"],
       ["sasl.jaas.config", "software.amazon.msk.auth.iam.IAMLoginModule required;"],
       ["sasl.client.callback.handler.class", "software.amazon.msk.auth.iam.IAMClientCallbackHandler"],
     ]) :
-    "schema.history.internal.${pair[0]}.${pair[1][0]}" => pair[1][1]
+    "${pair[0]}.${pair[1][0]}" => pair[1][1]
   }
 
-  # database.pdb.name must be absent (not empty) for a non-CDB Oracle database.
-  oracle_pdb_config = var.oracle_pdb_name != "" ? { "database.pdb.name" = var.oracle_pdb_name } : {}
+  # oracle.pdb.name must be absent (not empty) for a non-CDB Oracle database.
+  oracle_pdb_config = var.oracle_pdb_name != "" ? { "oracle.pdb.name" = var.oracle_pdb_name } : {}
 }
 
 module "msk_connect_oracle" {
@@ -478,7 +484,7 @@ module "msk_connect_oracle" {
   count = var.enable_oracle_source_connector ? 1 : 0
 
   name                  = local.name
-  connector_name_suffix = "debezium-oracle-source-connector"
+  connector_name_suffix = "oracle-source-connector"
   custom_plugin_name    = var.oracle_connect_custom_plugin_name
   bootstrap_servers     = module.msk.bootstrap_brokers_iam
   msk_connect_sg_id     = module.security_groups.msk_connect_sg_id
@@ -494,40 +500,40 @@ module "msk_connect_oracle" {
   converter_schemas_enabled = false
 
   connector_configuration = merge(
-    local.oracle_schema_history_iam_auth,
+    local.oracle_kafka_iam_auth,
     local.oracle_pdb_config,
     {
-      "connector.class"             = "io.debezium.connector.oracle.OracleConnector"
-      "tasks.max"                   = tostring(var.oracle_tasks_max)
-      "database.hostname"           = var.oracle_db_host
-      "database.port"               = tostring(var.oracle_db_port)
-      "database.user"               = var.oracle_db_user
-      "database.password"           = var.oracle_db_password
-      "database.dbname"             = var.oracle_db_name
-      "database.connection.adapter" = var.oracle_connection_adapter
-      "topic.prefix"                = var.oracle_topic_prefix
-      "table.include.list"          = var.oracle_table_include_list
-      "snapshot.mode"               = var.oracle_snapshot_mode
-      "heartbeat.interval.ms"       = tostring(var.debezium_heartbeat_interval_ms)
-      "decimal.handling.mode"       = "double"
-      "time.precision.mode"         = "connect"
-      "max.queue.size"              = "200000"
-      "max.batch.size"              = "20000"
-      "poll.interval.ms"            = "100"
+      "connector.class" = "io.confluent.connect.oracle.cdc.OracleCdcSourceConnector"
+      "tasks.max"       = tostring(var.oracle_tasks_max)
 
-      # Oracle DDL history — required by the Oracle connector, unlike Postgres.
-      "schema.history.internal.kafka.bootstrap.servers" = module.msk.bootstrap_brokers_iam
-      "schema.history.internal.kafka.topic"             = var.oracle_schema_history_topic
+      "oracle.server"   = var.oracle_db_host
+      "oracle.port"     = tostring(var.oracle_db_port)
+      "oracle.sid"      = var.oracle_db_name
+      "oracle.username" = var.oracle_db_user
+      "oracle.password" = var.oracle_db_password
 
-      "transforms"                             = "unwrap"
-      "transforms.unwrap.type"                 = "io.debezium.transforms.ExtractNewRecordState"
-      "transforms.unwrap.add.headers"          = "op,ts_ms,source.ts_ms,before.external_sourced_id,before.student_id,before.term_id,before.student_enrollment_id,before.section_id"
-      "transforms.unwrap.drop.tombstones"      = "false"
-      "transforms.unwrap.delete.handling.mode" = "drop"
-      "key.converter"                          = "org.apache.kafka.connect.json.JsonConverter"
-      "key.converter.schemas.enable"           = "false"
-      "value.converter"                        = "org.apache.kafka.connect.json.JsonConverter"
-      "value.converter.schemas.enable"         = "false"
+      "table.inclusion.regex"    = var.oracle_table_inclusion_regex
+      "start.from"               = var.oracle_start_from
+      "emit.tombstone.on.delete" = tostring(var.oracle_emit_tombstone_on_delete)
+
+      # $${...} escapes Terraform interpolation — these are Confluent's own
+      # topic-name template variables, resolved by the connector at runtime.
+      "table.topic.name.template" = "${var.oracle_topic_prefix}.$${schemaName}.$${tableName}"
+      "redo.log.topic.name"       = "${var.oracle_topic_prefix}-redo-log"
+
+      # The connector reads its own redo-log topic back to build table events, so
+      # it needs the brokers explicitly whenever table.topic.name.template is set.
+      "redo.log.consumer.bootstrap.servers" = module.msk.bootstrap_brokers_iam
+
+      # Licensed connector — the license topic lives on the same MSK cluster.
+      "confluent.topic.bootstrap.servers"  = module.msk.bootstrap_brokers_iam
+      "confluent.topic.replication.factor" = tostring(var.msk_broker_count)
+      "confluent.license"                  = var.oracle_confluent_license
+
+      "key.converter"                  = "org.apache.kafka.connect.json.JsonConverter"
+      "key.converter.schemas.enable"   = "false"
+      "value.converter"                = "org.apache.kafka.connect.json.JsonConverter"
+      "value.converter.schemas.enable" = "false"
     }
   )
 

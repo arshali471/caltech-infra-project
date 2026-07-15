@@ -65,11 +65,11 @@ output "debezium_connector_arns" {
 }
 
 output "oracle_plugin_arn" {
-  description = "Custom plugin ARN used by the Debezium Oracle source connector (null when disabled)"
+  description = "Custom plugin ARN used by the Confluent Oracle CDC source connector (null when disabled)"
   value       = one(module.msk_connect_oracle[*].plugin_arn)
 }
 
 output "oracle_connector_arn" {
-  description = "ARN of the Debezium Oracle source connector (null when disabled)"
+  description = "ARN of the Confluent Oracle CDC source connector (null when disabled)"
   value       = one(module.msk_connect_oracle[*].connector_arn)
 }
