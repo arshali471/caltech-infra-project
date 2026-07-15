@@ -511,6 +511,17 @@ variable "oracle_connector_type" {
   }
 }
 
+variable "oracle_connector_class" {
+  description = <<-DESC
+    Overrides connector.class independently of var.oracle_connector_type, which
+    still selects the PROPERTY SET. Empty = use the class matching the type.
+    Set this only to pair a class with the other type's properties — the plugin
+    ZIP must still contain the class, and the class must accept the properties.
+  DESC
+  type        = string
+  default     = ""
+}
+
 variable "oracle_connect_custom_plugin_name" {
   description = "Name of the existing MSK Connect custom plugin. Its ZIP must contain the connector class implied by var.oracle_connector_type — the name itself is only a label"
   type        = string

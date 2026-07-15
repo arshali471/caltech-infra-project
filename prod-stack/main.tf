@@ -504,12 +504,16 @@ locals {
     "value.converter.schemas.enable" = "false"
   }
 
+  # Default class per connector type; var.oracle_connector_class overrides it.
+  oracle_default_class = var.oracle_connector_type == "confluent" ? "io.confluent.connect.oracle.cdc.OracleCdcSourceConnector" : "io.debezium.connector.oracle.OracleConnector"
+  oracle_class         = var.oracle_connector_class != "" ? var.oracle_connector_class : local.oracle_default_class
+
   oracle_debezium_config = merge(
     local.oracle_debezium_iam_auth,
     local.oracle_debezium_pdb,
     local.oracle_converters,
     {
-      "connector.class"             = "io.debezium.connector.oracle.OracleConnector"
+      "connector.class"             = local.oracle_class
       "tasks.max"                   = tostring(var.oracle_tasks_max)
       "database.hostname"           = var.oracle_db_host
       "database.port"               = tostring(var.oracle_db_port)
@@ -544,7 +548,7 @@ locals {
     local.oracle_confluent_pdb,
     local.oracle_converters,
     {
-      "connector.class" = "io.confluent.connect.oracle.cdc.OracleCdcSourceConnector"
+      "connector.class" = local.oracle_class
       "tasks.max"       = tostring(var.oracle_tasks_max)
 
       "oracle.server"   = var.oracle_db_host

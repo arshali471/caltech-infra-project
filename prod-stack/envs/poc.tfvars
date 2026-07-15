@@ -147,6 +147,10 @@ debezium_table_include_list    = "public.section_enrollments,public.student_atte
 enable_oracle_source_connector = true
 oracle_connector_type          = "debezium"
 
+# Per the app team's config: Confluent's class with Debezium's property set.
+# Set to "" to fall back to the class matching oracle_connector_type above.
+oracle_connector_class = "io.confluent.connect.oracle.cdc.OracleCdcSourceConnector"
+
 # Existing plugin — already registered and proven working with the Debezium class.
 oracle_connect_custom_plugin_name = "caltech-poc-debezium-oracle-source-connector-plugin"
 
