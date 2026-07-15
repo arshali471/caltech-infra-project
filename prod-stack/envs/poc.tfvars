@@ -145,10 +145,13 @@ debezium_table_include_list    = "public.section_enrollments,public.student_atte
 #   aws kafkaconnect list-custom-plugins --region us-west-2 \
 #     --query 'customPlugins[].{Name:name,File:latestRevision.location.s3Location.fileKey}'
 enable_oracle_source_connector = true
-oracle_connector_type          = "debezium"
 
-# Per the app team's config: Confluent's class with Debezium's property set.
-# Set to "" to fall back to the class matching oracle_connector_type above.
+# "custom" = the app team's supplied property set (oracle.* prefixes, no SMT).
+# Switch to "debezium" for the known-working Debezium property set.
+oracle_connector_type = "custom"
+
+# Per the app team's config. Set to "" to fall back to the class matching
+# oracle_connector_type above.
 oracle_connector_class = "io.confluent.connect.oracle.cdc.OracleCdcSourceConnector"
 
 # Existing plugin — already registered and proven working with the Debezium class.
@@ -168,11 +171,12 @@ oracle_pdb_name    = "EXETEST1" # PDB name — set to "" for a non-CDB database
 oracle_topic_prefix = "caltech_poc_oracle_test"
 oracle_tasks_max    = 1
 
-# ---- used when oracle_connector_type = "debezium" ---------------------------
+# ---- used when oracle_connector_type = "debezium" or "custom" ---------------
 oracle_table_include_list   = "EXETER.SSS_AREAS"
 oracle_connection_adapter   = "logminer"
 oracle_schema_history_topic = "schemahistory.oracle"
 oracle_snapshot_mode        = "initial"
+oracle_schema_include_list  = "EXETER" # [custom] Oracle schema, not "public"
 
 # ---- used when oracle_connector_type = "confluent" --------------------------
 # Fully-qualified <PDB>.<SCHEMA>.<TABLE>, dots escaped as [.] — NOT the same

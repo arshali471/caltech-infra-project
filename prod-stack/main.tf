@@ -577,7 +577,44 @@ locals {
     }
   )
 
-  oracle_connector_configuration = var.oracle_connector_type == "confluent" ? local.oracle_confluent_config : local.oracle_debezium_config
+  # ---- "custom" — the app team's supplied config, rendered verbatim ----------
+  # LogMiner property set with oracle.* prefixes instead of Debezium's database.*
+  # prefixes, no unwrap SMT, and schema.include.list scoped to the Oracle schema.
+  # Kept separate from oracle_debezium_config so the known-working Debezium
+  # property set stays available as a fallback.
+  oracle_custom_config = merge(
+    local.oracle_debezium_iam_auth,
+    var.oracle_pdb_name != "" ? { "oracle.pdb.name" = var.oracle_pdb_name } : {},
+    local.oracle_converters,
+    {
+      "connector.class"           = local.oracle_class
+      "tasks.max"                 = tostring(var.oracle_tasks_max)
+      "oracle.hostname"           = var.oracle_db_host
+      "oracle.port"               = tostring(var.oracle_db_port)
+      "oracle.user"               = var.oracle_db_user
+      "oracle.password"           = var.oracle_db_password
+      "oracle.dbname"             = var.oracle_db_name
+      "oracle.connection.adapter" = var.oracle_connection_adapter
+      "topic.prefix"              = var.oracle_topic_prefix
+      "schema.include.list"       = var.oracle_schema_include_list
+      "table.include.list"        = var.oracle_table_include_list
+      "snapshot.mode"             = var.oracle_snapshot_mode
+      "heartbeat.interval.ms"     = tostring(var.debezium_heartbeat_interval_ms)
+      "decimal.handling.mode"     = "double"
+      "max.queue.size"            = "100000"
+      "max.batch.size"            = "20000"
+      "poll.interval.ms"          = "100"
+
+      "schema.history.internal.kafka.bootstrap.servers" = module.msk.bootstrap_brokers_iam
+      "schema.history.internal.kafka.topic"             = var.oracle_schema_history_topic
+    }
+  )
+
+  oracle_connector_configuration = {
+    debezium  = local.oracle_debezium_config
+    confluent = local.oracle_confluent_config
+    custom    = local.oracle_custom_config
+  }[var.oracle_connector_type]
 }
 
 module "msk_connect_oracle" {

@@ -494,20 +494,21 @@ variable "enable_oracle_source_connector" {
 
 variable "oracle_connector_type" {
   description = <<-DESC
-    Which Oracle connector implementation to deploy:
-      "debezium"  — io.debezium.connector.oracle.OracleConnector (free, Maven Central)
-      "confluent" — io.confluent.connect.oracle.cdc.OracleCdcSourceConnector (licensed, Confluent Hub)
-    These two share almost no config properties and emit different event shapes.
+    Which Oracle PROPERTY SET to render (var.oracle_connector_class sets the class):
+      "debezium"  — Debezium's database.* properties + unwrap SMT (known-working)
+      "confluent" — Confluent's oracle.server / table.inclusion.regex / start.from
+      "custom"    — the app team's supplied oracle.* property set
+    These share almost no properties and emit different event shapes.
     var.oracle_connect_custom_plugin_name must point at a plugin ZIP containing
-    the matching connector class, or apply fails with "Failed to find any class
+    the connector class in use, or apply fails with "Failed to find any class
     that implements Connector".
   DESC
   type        = string
   default     = "debezium"
 
   validation {
-    condition     = contains(["debezium", "confluent"], var.oracle_connector_type)
-    error_message = "oracle_connector_type must be either \"debezium\" or \"confluent\"."
+    condition     = contains(["debezium", "confluent", "custom"], var.oracle_connector_type)
+    error_message = "oracle_connector_type must be one of: debezium, confluent, custom."
   }
 }
 
@@ -597,9 +598,15 @@ variable "oracle_table_include_list" {
 }
 
 variable "oracle_schema_history_topic" {
-  description = "[debezium] Internal Kafka topic where the connector stores DDL schema history"
+  description = "[debezium/custom] Internal Kafka topic where the connector stores DDL schema history"
   type        = string
   default     = "schemahistory.oracle"
+}
+
+variable "oracle_schema_include_list" {
+  description = "[custom] Oracle schema(s) to include in CDC (e.g. EXETER)"
+  type        = string
+  default     = ""
 }
 
 variable "oracle_snapshot_mode" {
