@@ -48,8 +48,8 @@ elasticache_subnet_ids = ["subnet-09fbbd79068ad5555", "subnet-069266bf3b71d537e"
 #   • subnet-069266bf3b71d537e (us-west-2c, 6 free IPs) — AZ partner
 # Total: 70 IPs for 5 connectors × max 4 workers = 20 ENIs (3.5x headroom).
 msk_connect_subnet_ids = [
-  "subnet-0e525948c54e72b45",   # NEW — 64 free IPs
-  "subnet-069266bf3b71d537e",   # us-west-2c — 6 free IPs (AZ partner)
+  "subnet-0e525948c54e72b45", # NEW — 64 free IPs
+  "subnet-069266bf3b71d537e", # us-west-2c — 6 free IPs (AZ partner)
 ]
 
 # ---- Network ports ---------------------------------------------------------
@@ -62,8 +62,8 @@ redis_port     = 6379
 ec2_ami_id                   = "ami-04486bbfa25728941"
 ec2_key_pair_name            = "caltech-keypair"
 ssh_allowed_cidr             = ["10.145.0.0/24"]
-ec2_instance_type            = "t3.xlarge"      # used by ec2_pg_sink + ec2_redis_sink
-ec2_app_server_instance_type = "m6i.2xlarge"    # used by the primary app-server (txn simulator)
+ec2_instance_type            = "t3.xlarge"   # used by ec2_pg_sink + ec2_redis_sink
+ec2_app_server_instance_type = "m6i.2xlarge" # used by the primary app-server (txn simulator)
 ec2_root_volume_gb           = 100
 ec2_volume_type              = "gp3"
 // java_package         = "java-17-amazon-corretto"
@@ -120,45 +120,63 @@ msk_connect_scale_out_cpu_pct  = 80
 # ---- Debezium connector ----------------------------------------------------
 debezium_snapshot_mode         = "initial"
 debezium_plugin_name           = "pgoutput"
-debezium_slot_name             = "dbz_students_slot"      # connector 1 uses ${name}_1, connector 2 uses ${name}_2
-debezium_publication_name      = "dbz_publication"        # connector 1 uses ${name}_1, connector 2 uses ${name}_2
+debezium_slot_name             = "dbz_students_slot" # connector 1 uses ${name}_1, connector 2 uses ${name}_2
+debezium_publication_name      = "dbz_publication"   # connector 1 uses ${name}_1, connector 2 uses ${name}_2
 debezium_topic_prefix          = "caltech_poc_10"
 debezium_tasks_max             = 1
 debezium_heartbeat_interval_ms = 30000
 debezium_schema_include_list   = "public"
 debezium_table_include_list    = "public.section_enrollments,public.student_attendance,public.student_enrollment,public.student_lms,public.student_term_log"
 
-# ---- Oracle source connector (Confluent Oracle CDC / LogMiner) -------------
+# ---- Oracle source connector (LogMiner) ------------------------------------
 # Reads CDC from the external Oracle DB at oracle_db_host — NOT managed by this
 # stack. The host must be routable from msk_connect_subnet_ids above.
 #
-# PREREQUISITE 1: register the custom plugin named below, built from the
-#   Confluent Hub ZIP (confluentinc/kafka-connect-oracle-cdc) plus orai18n.jar
-#   and aws-msk-iam-auth.jar. This is NOT the Debezium plugin.
-# PREREQUISITE 2: oracle_confluent_license — this connector is licensed and
-#   stops after a 30-day trial without a key.
-enable_oracle_source_connector    = true
-oracle_connect_custom_plugin_name = "caltech-poc-oracle-cdc-source-connector-plugin"
+# oracle_connector_type picks the implementation. It MUST match what is actually
+# inside the plugin ZIP named below — the plugin name is only a label.
+#
+#   "debezium"  → plugin ZIP from Maven Central (debezium-connector-oracle,
+#                 bundles ojdbc11) + aws-msk-iam-auth.jar.
+#   "confluent" → plugin ZIP from Confluent Hub (kafka-connect-oracle-cdc)
+#                 + orai18n.jar + aws-msk-iam-auth.jar, AND a license key below.
+#                 Register it as a NEW plugin; do not reuse the Debezium one.
+#
+# Verify what is registered before flipping this:
+#   aws kafkaconnect list-custom-plugins --region us-west-2 \
+#     --query 'customPlugins[].{Name:name,File:latestRevision.location.s3Location.fileKey}'
+enable_oracle_source_connector = true
+oracle_connector_type          = "debezium"
+
+# Existing plugin — already registered and proven working with the Debezium class.
+oracle_connect_custom_plugin_name = "caltech-poc-debezium-oracle-source-connector-plugin"
+
+# Matches the connector already in state. Changing this destroys and recreates the
+# connector, its worker config, and its log group.
+oracle_connector_name_suffix = "debezium-oracle-source-connector"
 
 oracle_db_host     = "10.115.6.11"
 oracle_db_port     = 1920         # non-default listener port (Oracle default is 1521)
 oracle_db_user     = "c##dbzuser" # common user — required when capturing from a CDB
 oracle_db_password = "dbz"
-oracle_db_name     = "EXETST1C"   # oracle.sid — the CDB identifier
-oracle_pdb_name    = "EXETEST1"   # PDB name — set to "" for a non-CDB database
+oracle_db_name     = "EXETST1C" # CDB identifier (database.dbname / oracle.sid)
+oracle_pdb_name    = "EXETEST1" # PDB name — set to "" for a non-CDB database
 
 oracle_topic_prefix = "caltech_poc_oracle_test"
+oracle_tasks_max    = 1
 
-# Fully-qualified as <PDB>.<SCHEMA>.<TABLE>, dots escaped as [.] — Confluent's
-# regex form. This is NOT interchangeable with Debezium's "EXETER.SSS_AREAS".
-oracle_table_inclusion_regex = "EXETEST1[.]EXETER[.]SSS_AREAS"
+# ---- used when oracle_connector_type = "debezium" ---------------------------
+oracle_table_include_list   = "EXETER.SSS_AREAS"
+oracle_connection_adapter   = "logminer"
+oracle_schema_history_topic = "schemahistory.oracle"
+oracle_snapshot_mode        = "initial"
 
-oracle_start_from               = "snapshot" # Confluent's equivalent of Debezium snapshot.mode = initial
+# ---- used when oracle_connector_type = "confluent" --------------------------
+# Fully-qualified <PDB>.<SCHEMA>.<TABLE>, dots escaped as [.] — NOT the same
+# format as oracle_table_include_list above.
+oracle_table_inclusion_regex    = "EXETEST1[.]EXETER[.]SSS_AREAS"
+oracle_start_from               = "snapshot" # Confluent's equivalent of snapshot.mode = initial
 oracle_emit_tombstone_on_delete = false
-oracle_tasks_max                = 1
-
-# Leave empty ONLY for the 30-day trial; supply the real key before the POC ends.
-oracle_confluent_license = ""
+oracle_confluent_license        = "" # empty = 30-day trial, then the connector STOPS
 
 # ---- S3 lifecycle ----------------------------------------------------------
 data_lake_ia_transition_days      = 30

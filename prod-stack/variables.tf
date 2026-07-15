@@ -477,25 +477,50 @@ variable "debezium_heartbeat_interval_ms" {
   default     = 30000
 }
 
-# ---- Oracle source connector (Confluent Oracle CDC / LogMiner) --------------
+# ---- Oracle source connector (LogMiner) -------------------------------------
 # Captures CDC from an external Oracle database reachable from the MSK Connect
 # worker subnets. Disabled by default so envs without an Oracle source
 # (e.g. dev) plan cleanly with no extra config.
 #
-# NOTE: this uses Confluent's LICENSED Oracle CDC connector, not Debezium. The
-# custom plugin must be built from the Confluent Hub ZIP, and var.oracle_confluent_license
-# must hold a valid key — without one the connector stops after a 30-day trial.
+# Supports EITHER the Debezium or the Confluent Oracle connector — see
+# var.oracle_connector_type. Variables below are grouped as shared / debezium-only
+# / confluent-only; the unused group is harmless dead config.
 
 variable "enable_oracle_source_connector" {
-  description = "Create the Confluent Oracle CDC source connector"
+  description = "Create the Oracle source connector"
   type        = bool
   default     = false
 }
 
+variable "oracle_connector_type" {
+  description = <<-DESC
+    Which Oracle connector implementation to deploy:
+      "debezium"  — io.debezium.connector.oracle.OracleConnector (free, Maven Central)
+      "confluent" — io.confluent.connect.oracle.cdc.OracleCdcSourceConnector (licensed, Confluent Hub)
+    These two share almost no config properties and emit different event shapes.
+    var.oracle_connect_custom_plugin_name must point at a plugin ZIP containing
+    the matching connector class, or apply fails with "Failed to find any class
+    that implements Connector".
+  DESC
+  type        = string
+  default     = "debezium"
+
+  validation {
+    condition     = contains(["debezium", "confluent"], var.oracle_connector_type)
+    error_message = "oracle_connector_type must be either \"debezium\" or \"confluent\"."
+  }
+}
+
 variable "oracle_connect_custom_plugin_name" {
-  description = "Name of the existing MSK Connect custom plugin holding the Confluent Oracle CDC connector"
+  description = "Name of the existing MSK Connect custom plugin. Its ZIP must contain the connector class implied by var.oracle_connector_type — the name itself is only a label"
   type        = string
   default     = ""
+}
+
+variable "oracle_connector_name_suffix" {
+  description = "Appended to <project>-<env> to form the connector name. Changing this REPLACES the connector, its worker config, and its log group"
+  type        = string
+  default     = "oracle-source-connector"
 }
 
 variable "oracle_db_host" {
@@ -536,24 +561,57 @@ variable "oracle_pdb_name" {
 }
 
 variable "oracle_topic_prefix" {
-  description = "Kafka topic prefix for Oracle CDC events. Table topics become <prefix>.<schema>.<table>; the redo log topic becomes <prefix>-redo-log"
+  description = "Kafka topic prefix for Oracle CDC events. Table topics become <prefix>.<schema>.<table>; for confluent, the redo log topic becomes <prefix>-redo-log"
   type        = string
   default     = ""
 }
 
+# ---- Oracle: debezium-only --------------------------------------------------
+
+variable "oracle_connection_adapter" {
+  description = "[debezium] Capture adapter (logminer or xstream)"
+  type        = string
+  default     = "logminer"
+
+  validation {
+    condition     = contains(["logminer", "xstream"], var.oracle_connection_adapter)
+    error_message = "oracle_connection_adapter must be either \"logminer\" or \"xstream\"."
+  }
+}
+
+variable "oracle_table_include_list" {
+  description = "[debezium] Comma-separated tables to capture, SCHEMA.TABLE form (uppercase). Note this is NOT the same format as var.oracle_table_inclusion_regex"
+  type        = string
+  default     = ""
+}
+
+variable "oracle_schema_history_topic" {
+  description = "[debezium] Internal Kafka topic where the connector stores DDL schema history"
+  type        = string
+  default     = "schemahistory.oracle"
+}
+
+variable "oracle_snapshot_mode" {
+  description = "[debezium] Snapshot mode (initial, initial_only, schema_only, never)"
+  type        = string
+  default     = "initial"
+}
+
+# ---- Oracle: confluent-only -------------------------------------------------
+
 variable "oracle_table_inclusion_regex" {
   description = <<-DESC
-    Regex matching the FULLY-QUALIFIED Oracle tables to capture. Confluent expects
-    <SID-or-PDB>.<SCHEMA>.<TABLE> — note this includes the PDB/SID, unlike Debezium's
-    schema.table form. Dots inside a literal name must be escaped as [.].
-    Example: EXETEST1[.]EXETER[.]SSS_AREAS
+    [confluent] Regex matching the FULLY-QUALIFIED Oracle tables to capture.
+    Confluent expects <SID-or-PDB>.<SCHEMA>.<TABLE> — note this includes the
+    PDB/SID, unlike Debezium's schema.table form. Dots inside a literal name must
+    be escaped as [.]. Example: EXETEST1[.]EXETER[.]SSS_AREAS
   DESC
   type        = string
   default     = ""
 }
 
 variable "oracle_start_from" {
-  description = "Where the connector begins reading: snapshot (full table snapshot first), current (SCN at startup), or force_current (current SCN, ignoring stored offsets)"
+  description = "[confluent] Where the connector begins reading: snapshot (full table snapshot first), current (SCN at startup), or force_current (current SCN, ignoring stored offsets)"
   type        = string
   default     = "snapshot"
 
@@ -564,14 +622,14 @@ variable "oracle_start_from" {
 }
 
 variable "oracle_confluent_license" {
-  description = "Confluent enterprise license key for the Oracle CDC connector. Empty = 30-day trial, after which the connector STOPS"
+  description = "[confluent] Enterprise license key for the Oracle CDC connector. Empty = 30-day trial, after which the connector STOPS"
   type        = string
   default     = ""
   sensitive   = true
 }
 
 variable "oracle_emit_tombstone_on_delete" {
-  description = "Emit a null-value tombstone record on delete (needed for log-compacted topics)"
+  description = "[confluent] Emit a null-value tombstone record on delete (needed for log-compacted topics)"
   type        = bool
   default     = false
 }

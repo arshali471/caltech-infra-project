@@ -72,15 +72,15 @@ module "vpc" {
 # ---- Network IDs picked from either the new module or existing vars ---------
 
 locals {
-  vpc_id                  = var.create_vpc ? module.vpc[0].vpc_id              : var.vpc_id
-  public_subnet_ids       = var.create_vpc ? module.vpc[0].public_subnet_ids   : var.public_subnet_ids
-  private_subnet_ids      = var.create_vpc ? module.vpc[0].private_subnet_ids  : var.private_subnet_ids
-  msk_subnet_ids          = var.create_vpc ? module.vpc[0].private_subnet_ids  : var.msk_subnet_ids
-  elasticache_subnet_ids  = var.create_vpc ? module.vpc[0].private_subnet_ids  : var.elasticache_subnet_ids
+  vpc_id                 = var.create_vpc ? module.vpc[0].vpc_id : var.vpc_id
+  public_subnet_ids      = var.create_vpc ? module.vpc[0].public_subnet_ids : var.public_subnet_ids
+  private_subnet_ids     = var.create_vpc ? module.vpc[0].private_subnet_ids : var.private_subnet_ids
+  msk_subnet_ids         = var.create_vpc ? module.vpc[0].private_subnet_ids : var.msk_subnet_ids
+  elasticache_subnet_ids = var.create_vpc ? module.vpc[0].private_subnet_ids : var.elasticache_subnet_ids
 
   # MSK Connect needs predictable IP usage. Use dedicated subnets if specified,
   # otherwise fall back to private_subnet_ids.
-  msk_connect_subnet_ids  = length(var.msk_connect_subnet_ids) > 0 ? var.msk_connect_subnet_ids : local.private_subnet_ids
+  msk_connect_subnet_ids = length(var.msk_connect_subnet_ids) > 0 ? var.msk_connect_subnet_ids : local.private_subnet_ids
 
   # EC2 placement — private subnet for dev/non-prod (per MoM); public subnet
   # for current prod (existing VPC). SSM endpoints + NAT handle private access.
@@ -221,23 +221,23 @@ module "aurora_source" {
   source = "./modules/aurora_source"
   name   = local.name
 
-  engine         = var.aurora_engine
-  engine_version = var.aurora_engine_version
-  db_name        = var.aurora_source_db_name
-  master_username = var.aurora_source_master_username
-  master_password = module.secrets.aurora_source_password
-  subnet_ids      = local.private_subnet_ids
+  engine            = var.aurora_engine
+  engine_version    = var.aurora_engine_version
+  db_name           = var.aurora_source_db_name
+  master_username   = var.aurora_source_master_username
+  master_password   = module.secrets.aurora_source_password
+  subnet_ids        = local.private_subnet_ids
   security_group_id = module.security_groups.aurora_source_sg_id
-  kms_key_arn     = module.kms.aurora_key_arn
-  min_acu         = var.aurora_source_min_acu
-  max_acu         = var.aurora_source_max_acu
+  kms_key_arn       = module.kms.aurora_key_arn
+  min_acu           = var.aurora_source_min_acu
+  max_acu           = var.aurora_source_max_acu
 
-  backup_retention_period     = var.aurora_backup_retention_period
-  preferred_backup_window     = var.aurora_preferred_backup_window
+  backup_retention_period      = var.aurora_backup_retention_period
+  preferred_backup_window      = var.aurora_preferred_backup_window
   preferred_maintenance_window = var.aurora_preferred_maintenance_window
-  skip_final_snapshot         = var.aurora_skip_final_snapshot
-  deletion_protection         = var.aurora_deletion_protection
-  cloudwatch_logs_exports     = var.aurora_cloudwatch_logs_exports
+  skip_final_snapshot          = var.aurora_skip_final_snapshot
+  deletion_protection          = var.aurora_deletion_protection
+  cloudwatch_logs_exports      = var.aurora_cloudwatch_logs_exports
 
   max_replication_slots = var.aurora_source_max_replication_slots
   max_wal_senders       = var.aurora_source_max_wal_senders
@@ -254,16 +254,16 @@ module "aurora_sink" {
   source = "./modules/aurora_sink"
   name   = local.name
 
-  engine         = var.aurora_engine
-  engine_version = var.aurora_engine_version
-  db_name        = var.aurora_sink_db_name
-  master_username = var.aurora_sink_master_username
-  master_password = module.secrets.aurora_sink_password
-  subnet_ids      = local.private_subnet_ids
+  engine            = var.aurora_engine
+  engine_version    = var.aurora_engine_version
+  db_name           = var.aurora_sink_db_name
+  master_username   = var.aurora_sink_master_username
+  master_password   = module.secrets.aurora_sink_password
+  subnet_ids        = local.private_subnet_ids
   security_group_id = module.security_groups.aurora_sink_sg_id
-  kms_key_arn     = module.kms.aurora_key_arn
-  min_acu         = var.aurora_sink_min_acu
-  max_acu         = var.aurora_sink_max_acu
+  kms_key_arn       = module.kms.aurora_key_arn
+  min_acu           = var.aurora_sink_min_acu
+  max_acu           = var.aurora_sink_max_acu
 
   backup_retention_period      = var.aurora_backup_retention_period
   preferred_backup_window      = var.aurora_preferred_backup_window
@@ -313,7 +313,7 @@ module "ec2" {
   ebs_kms_key_arn       = module.kms.ebs_key_arn
   // java_package          = var.java_package
   // msk_iam_auth_version  = var.msk_iam_auth_version
-  tags                  = var.tags
+  tags = var.tags
 }
 
 module "ec2_pg_sink" {
@@ -439,69 +439,110 @@ module "msk_connect" {
 }
 
 ###############################################################################
-# Step 9b — MSK Connect + Confluent Oracle CDC source connector
-#
-# PREREQUISITE 1: Build the custom plugin from the Confluent Hub ZIP
-#   (confluentinc/kafka-connect-oracle-cdc) — NOT from Maven Central — with
-#   orai18n.jar and aws-msk-iam-auth added to its lib/ folder, then register it
-#   under the name in var.oracle_connect_custom_plugin_name.
-# PREREQUISITE 2: A Confluent license in var.oracle_confluent_license. This is a
-#   LICENSED connector; with an empty license it runs a 30-day trial then stops.
-#
-#   Connector → caltech-<env>-oracle-source-connector
+# Step 9b — MSK Connect Oracle source connector
 #
 # Reads from an EXTERNAL Oracle database (not managed by this stack) over
 # LogMiner. The MSK Connect SG allows all egress, so no SG change is needed —
 # but the Oracle host must be routable from the MSK Connect worker subnets.
 #
-# Toggled by var.enable_oracle_source_connector so envs without an Oracle
-# source plan cleanly.
+# TWO CONNECTOR IMPLEMENTATIONS, selected by var.oracle_connector_type:
+#
+#   "debezium"  → io.debezium.connector.oracle.OracleConnector
+#                 Free/open source. Plugin ZIP from Maven Central (bundles
+#                 ojdbc11); add aws-msk-iam-auth.jar for the schema-history
+#                 client's IAM auth. Emits Debezium-shaped events + unwrap SMT.
+#
+#   "confluent" → io.confluent.connect.oracle.cdc.OracleCdcSourceConnector
+#                 LICENSED. Plugin ZIP from Confluent Hub + orai18n.jar +
+#                 aws-msk-iam-auth.jar. Needs var.oracle_confluent_license or it
+#                 stops after a 30-day trial. Emits a DIFFERENT event shape —
+#                 downstream sink consumers must be reworked to match.
+#
+# The two share almost no configuration surface, so each has its own complete
+# config map below. var.oracle_connect_custom_plugin_name MUST point at a plugin
+# whose ZIP actually contains the chosen connector class — the plugin name is
+# only a label, and a mismatch fails at apply with "Failed to find any class
+# that implements Connector".
+#
+# Toggled off entirely by var.enable_oracle_source_connector so envs without an
+# Oracle source plan cleanly.
 ###############################################################################
 
 locals {
-  # The Confluent connector opens two Kafka clients of its own — one for the
-  # license topic, one to read back the redo-log topic — and neither inherits the
-  # cluster's IAM auth from MSK Connect. Without explicit SASL config they cannot
-  # authenticate to the IAM-only broker listener.
+  # Debezium's schema-history client is a separate Kafka client from the worker's
+  # producer/consumer and does NOT inherit the cluster's IAM auth from MSK Connect.
   # Requires aws-msk-iam-auth on the plugin classpath to load IAMLoginModule.
-  oracle_kafka_iam_auth = {
-    for pair in setproduct(["confluent.topic", "redo.log.consumer"], [
-      ["security.protocol", "SASL_SSL"],
-      ["sasl.mechanism", "AWS_MSK_IAM"],
-      ["sasl.jaas.config", "software.amazon.msk.auth.iam.IAMLoginModule required;"],
-      ["sasl.client.callback.handler.class", "software.amazon.msk.auth.iam.IAMClientCallbackHandler"],
-    ]) :
+  oracle_debezium_iam_auth = {
+    for pair in setproduct(["producer", "consumer"], local.oracle_msk_iam_props) :
+    "schema.history.internal.${pair[0]}.${pair[1][0]}" => pair[1][1]
+  }
+
+  # Confluent's connector opens two Kafka clients of its own — one for the license
+  # topic, one to read back the redo-log topic — and neither inherits the cluster's
+  # IAM auth either.
+  oracle_confluent_iam_auth = {
+    for pair in setproduct(["confluent.topic", "redo.log.consumer"], local.oracle_msk_iam_props) :
     "${pair[0]}.${pair[1][0]}" => pair[1][1]
   }
 
-  # oracle.pdb.name must be absent (not empty) for a non-CDB Oracle database.
-  oracle_pdb_config = var.oracle_pdb_name != "" ? { "oracle.pdb.name" = var.oracle_pdb_name } : {}
-}
+  oracle_msk_iam_props = [
+    ["security.protocol", "SASL_SSL"],
+    ["sasl.mechanism", "AWS_MSK_IAM"],
+    ["sasl.jaas.config", "software.amazon.msk.auth.iam.IAMLoginModule required;"],
+    ["sasl.client.callback.handler.class", "software.amazon.msk.auth.iam.IAMClientCallbackHandler"],
+  ]
 
-module "msk_connect_oracle" {
-  source = "./modules/msk_connect"
+  # The PDB key must be absent (not empty) for a non-CDB Oracle database — and the
+  # two connectors spell it differently.
+  oracle_debezium_pdb  = var.oracle_pdb_name != "" ? { "database.pdb.name" = var.oracle_pdb_name } : {}
+  oracle_confluent_pdb = var.oracle_pdb_name != "" ? { "oracle.pdb.name" = var.oracle_pdb_name } : {}
 
-  count = var.enable_oracle_source_connector ? 1 : 0
+  oracle_converters = {
+    "key.converter"                  = "org.apache.kafka.connect.json.JsonConverter"
+    "key.converter.schemas.enable"   = "false"
+    "value.converter"                = "org.apache.kafka.connect.json.JsonConverter"
+    "value.converter.schemas.enable" = "false"
+  }
 
-  name                  = local.name
-  connector_name_suffix = "oracle-source-connector"
-  custom_plugin_name    = var.oracle_connect_custom_plugin_name
-  bootstrap_servers     = module.msk.bootstrap_brokers_iam
-  msk_connect_sg_id     = module.security_groups.msk_connect_sg_id
-  private_subnet_ids    = local.msk_connect_subnet_ids
-  msk_connect_role_arn  = module.iam.msk_connect_role_arn
-  kafkaconnect_version  = var.kafkaconnect_version
-  min_workers           = var.msk_connect_min_workers
-  max_workers           = var.msk_connect_max_workers
-  mcu_count             = var.msk_connect_mcu_count
-  scale_in_cpu_pct      = var.msk_connect_scale_in_cpu_pct
-  scale_out_cpu_pct     = var.msk_connect_scale_out_cpu_pct
+  oracle_debezium_config = merge(
+    local.oracle_debezium_iam_auth,
+    local.oracle_debezium_pdb,
+    local.oracle_converters,
+    {
+      "connector.class"             = "io.debezium.connector.oracle.OracleConnector"
+      "tasks.max"                   = tostring(var.oracle_tasks_max)
+      "database.hostname"           = var.oracle_db_host
+      "database.port"               = tostring(var.oracle_db_port)
+      "database.user"               = var.oracle_db_user
+      "database.password"           = var.oracle_db_password
+      "database.dbname"             = var.oracle_db_name
+      "database.connection.adapter" = var.oracle_connection_adapter
+      "topic.prefix"                = var.oracle_topic_prefix
+      "table.include.list"          = var.oracle_table_include_list
+      "snapshot.mode"               = var.oracle_snapshot_mode
+      "heartbeat.interval.ms"       = tostring(var.debezium_heartbeat_interval_ms)
+      "decimal.handling.mode"       = "double"
+      "time.precision.mode"         = "connect"
+      "max.queue.size"              = "200000"
+      "max.batch.size"              = "20000"
+      "poll.interval.ms"            = "100"
 
-  converter_schemas_enabled = false
+      # Oracle DDL history — required by the Oracle connector, unlike Postgres.
+      "schema.history.internal.kafka.bootstrap.servers" = module.msk.bootstrap_brokers_iam
+      "schema.history.internal.kafka.topic"             = var.oracle_schema_history_topic
 
-  connector_configuration = merge(
-    local.oracle_kafka_iam_auth,
-    local.oracle_pdb_config,
+      "transforms"                             = "unwrap"
+      "transforms.unwrap.type"                 = "io.debezium.transforms.ExtractNewRecordState"
+      "transforms.unwrap.add.headers"          = "op,ts_ms,source.ts_ms,before.external_sourced_id,before.student_id,before.term_id,before.student_enrollment_id,before.section_id"
+      "transforms.unwrap.drop.tombstones"      = "false"
+      "transforms.unwrap.delete.handling.mode" = "drop"
+    }
+  )
+
+  oracle_confluent_config = merge(
+    local.oracle_confluent_iam_auth,
+    local.oracle_confluent_pdb,
+    local.oracle_converters,
     {
       "connector.class" = "io.confluent.connect.oracle.cdc.OracleCdcSourceConnector"
       "tasks.max"       = tostring(var.oracle_tasks_max)
@@ -529,13 +570,34 @@ module "msk_connect_oracle" {
       "confluent.topic.bootstrap.servers"  = module.msk.bootstrap_brokers_iam
       "confluent.topic.replication.factor" = tostring(var.msk_broker_count)
       "confluent.license"                  = var.oracle_confluent_license
-
-      "key.converter"                  = "org.apache.kafka.connect.json.JsonConverter"
-      "key.converter.schemas.enable"   = "false"
-      "value.converter"                = "org.apache.kafka.connect.json.JsonConverter"
-      "value.converter.schemas.enable" = "false"
     }
   )
+
+  oracle_connector_configuration = var.oracle_connector_type == "confluent" ? local.oracle_confluent_config : local.oracle_debezium_config
+}
+
+module "msk_connect_oracle" {
+  source = "./modules/msk_connect"
+
+  count = var.enable_oracle_source_connector ? 1 : 0
+
+  name                  = local.name
+  connector_name_suffix = var.oracle_connector_name_suffix
+  custom_plugin_name    = var.oracle_connect_custom_plugin_name
+  bootstrap_servers     = module.msk.bootstrap_brokers_iam
+  msk_connect_sg_id     = module.security_groups.msk_connect_sg_id
+  private_subnet_ids    = local.msk_connect_subnet_ids
+  msk_connect_role_arn  = module.iam.msk_connect_role_arn
+  kafkaconnect_version  = var.kafkaconnect_version
+  min_workers           = var.msk_connect_min_workers
+  max_workers           = var.msk_connect_max_workers
+  mcu_count             = var.msk_connect_mcu_count
+  scale_in_cpu_pct      = var.msk_connect_scale_in_cpu_pct
+  scale_out_cpu_pct     = var.msk_connect_scale_out_cpu_pct
+
+  converter_schemas_enabled = false
+
+  connector_configuration = local.oracle_connector_configuration
 
   tags = var.tags
 }
