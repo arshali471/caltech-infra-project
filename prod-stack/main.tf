@@ -438,3 +438,99 @@ module "msk_connect" {
   tags = var.tags
 }
 
+###############################################################################
+# Step 9b — MSK Connect + Debezium Oracle source connector
+# PREREQUISITE: Upload the Debezium Oracle ZIP (connector + Oracle JDBC driver)
+# to s3://$(terraform output -raw s3_plugins_bucket)/plugins/ and create the
+# custom plugin named var.oracle_connect_custom_plugin_name.
+#
+#   Connector → caltech-<env>-debezium-oracle-source-connector
+#
+# Reads from an EXTERNAL Oracle database (not managed by this stack) over
+# LogMiner. The MSK Connect SG allows all egress, so no SG change is needed —
+# but the Oracle host must be routable from the MSK Connect worker subnets.
+#
+# Toggled by var.enable_oracle_source_connector so envs without an Oracle
+# source plan cleanly.
+###############################################################################
+
+locals {
+  # Debezium's schema-history client is a separate Kafka client from the worker's
+  # producer/consumer and does NOT inherit the cluster's IAM auth. Without these
+  # it cannot authenticate to the IAM-only broker listener.
+  oracle_schema_history_iam_auth = {
+    for pair in setproduct(["producer", "consumer"], [
+      ["security.protocol", "SASL_SSL"],
+      ["sasl.mechanism", "AWS_MSK_IAM"],
+      ["sasl.jaas.config", "software.amazon.msk.auth.iam.IAMLoginModule required;"],
+      ["sasl.client.callback.handler.class", "software.amazon.msk.auth.iam.IAMClientCallbackHandler"],
+    ]) :
+    "schema.history.internal.${pair[0]}.${pair[1][0]}" => pair[1][1]
+  }
+
+  # database.pdb.name must be absent (not empty) for a non-CDB Oracle database.
+  oracle_pdb_config = var.oracle_pdb_name != "" ? { "database.pdb.name" = var.oracle_pdb_name } : {}
+}
+
+module "msk_connect_oracle" {
+  source = "./modules/msk_connect"
+
+  count = var.enable_oracle_source_connector ? 1 : 0
+
+  name                  = local.name
+  connector_name_suffix = "debezium-oracle-source-connector"
+  custom_plugin_name    = var.oracle_connect_custom_plugin_name
+  bootstrap_servers     = module.msk.bootstrap_brokers_iam
+  msk_connect_sg_id     = module.security_groups.msk_connect_sg_id
+  private_subnet_ids    = local.msk_connect_subnet_ids
+  msk_connect_role_arn  = module.iam.msk_connect_role_arn
+  kafkaconnect_version  = var.kafkaconnect_version
+  min_workers           = var.msk_connect_min_workers
+  max_workers           = var.msk_connect_max_workers
+  mcu_count             = var.msk_connect_mcu_count
+  scale_in_cpu_pct      = var.msk_connect_scale_in_cpu_pct
+  scale_out_cpu_pct     = var.msk_connect_scale_out_cpu_pct
+
+  converter_schemas_enabled = false
+
+  connector_configuration = merge(
+    local.oracle_schema_history_iam_auth,
+    local.oracle_pdb_config,
+    {
+      "connector.class"             = "io.debezium.connector.oracle.OracleConnector"
+      "tasks.max"                   = tostring(var.oracle_tasks_max)
+      "database.hostname"           = var.oracle_db_host
+      "database.port"               = tostring(var.oracle_db_port)
+      "database.user"               = var.oracle_db_user
+      "database.password"           = var.oracle_db_password
+      "database.dbname"             = var.oracle_db_name
+      "database.connection.adapter" = var.oracle_connection_adapter
+      "topic.prefix"                = var.oracle_topic_prefix
+      "table.include.list"          = var.oracle_table_include_list
+      "snapshot.mode"               = var.oracle_snapshot_mode
+      "heartbeat.interval.ms"       = tostring(var.debezium_heartbeat_interval_ms)
+      "decimal.handling.mode"       = "double"
+      "time.precision.mode"         = "connect"
+      "max.queue.size"              = "200000"
+      "max.batch.size"              = "20000"
+      "poll.interval.ms"            = "100"
+
+      # Oracle DDL history — required by the Oracle connector, unlike Postgres.
+      "schema.history.internal.kafka.bootstrap.servers" = module.msk.bootstrap_brokers_iam
+      "schema.history.internal.kafka.topic"             = var.oracle_schema_history_topic
+
+      "transforms"                             = "unwrap"
+      "transforms.unwrap.type"                 = "io.debezium.transforms.ExtractNewRecordState"
+      "transforms.unwrap.add.headers"          = "op,ts_ms,source.ts_ms,before.external_sourced_id,before.student_id,before.term_id,before.student_enrollment_id,before.section_id"
+      "transforms.unwrap.drop.tombstones"      = "false"
+      "transforms.unwrap.delete.handling.mode" = "drop"
+      "key.converter"                          = "org.apache.kafka.connect.json.JsonConverter"
+      "key.converter.schemas.enable"           = "false"
+      "value.converter"                        = "org.apache.kafka.connect.json.JsonConverter"
+      "value.converter.schemas.enable"         = "false"
+    }
+  )
+
+  tags = var.tags
+}
+

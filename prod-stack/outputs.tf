@@ -63,3 +63,13 @@ output "debezium_connector_arns" {
   description = "ARN of each Debezium source connector, keyed by table suffix (1–5)"
   value       = { for k, m in module.msk_connect : k => m.connector_arn }
 }
+
+output "oracle_plugin_arn" {
+  description = "Custom plugin ARN used by the Debezium Oracle source connector (null when disabled)"
+  value       = one(module.msk_connect_oracle[*].plugin_arn)
+}
+
+output "oracle_connector_arn" {
+  description = "ARN of the Debezium Oracle source connector (null when disabled)"
+  value       = one(module.msk_connect_oracle[*].connector_arn)
+}

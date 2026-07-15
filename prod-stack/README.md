@@ -24,7 +24,7 @@
 
 ---
 
-## What gets deployed
+## What gets deployed 
 
 | Service | Notes |
 |---|---|

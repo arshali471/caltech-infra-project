@@ -128,6 +128,29 @@ debezium_heartbeat_interval_ms = 30000
 debezium_schema_include_list   = "public"
 debezium_table_include_list    = "public.section_enrollments,public.student_attendance,public.student_enrollment,public.student_lms,public.student_term_log"
 
+# ---- Oracle source connector (Debezium / LogMiner) -------------------------
+# Reads CDC from the external Oracle DB at oracle_db_host — NOT managed by this
+# stack. The host must be routable from msk_connect_subnet_ids above.
+#
+# PREREQUISITE: create the custom plugin named below from the Debezium Oracle
+# ZIP (connector + Oracle JDBC driver) in the plugins bucket.
+enable_oracle_source_connector    = true
+oracle_connect_custom_plugin_name = "caltech-poc-debezium-oracle-source-connector-plugin"
+
+oracle_db_host            = "10.115.6.11"
+oracle_db_port            = 1920            # non-default listener port (Oracle default is 1521)
+oracle_db_user            = "c##dbzuser"    # common user — required when capturing from a CDB
+oracle_db_password        = "dbz"
+oracle_db_name            = "EXETST1C"      # CDB service name
+oracle_pdb_name           = "EXETEST1"      # PDB name — set to "" for a non-CDB database
+oracle_connection_adapter = "logminer"
+
+oracle_topic_prefix         = "caltech_poc_oracle_test"
+oracle_table_include_list   = "EXETER.SSS_STUDENT_ENROLLMENTS"
+oracle_schema_history_topic = "schemahistory.oracle"
+oracle_snapshot_mode        = "initial"
+oracle_tasks_max            = 1
+
 # ---- S3 lifecycle ----------------------------------------------------------
 data_lake_ia_transition_days      = 30
 data_lake_glacier_transition_days = 90

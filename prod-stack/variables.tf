@@ -477,6 +477,101 @@ variable "debezium_heartbeat_interval_ms" {
   default     = 30000
 }
 
+# ---- Oracle source connector (Debezium / LogMiner) --------------------------
+# Captures CDC from an external Oracle database reachable from the MSK Connect
+# worker subnets. Disabled by default so envs without an Oracle source
+# (e.g. dev) plan cleanly with no extra config.
+
+variable "enable_oracle_source_connector" {
+  description = "Create the Debezium Oracle source connector"
+  type        = bool
+  default     = false
+}
+
+variable "oracle_connect_custom_plugin_name" {
+  description = "Name of the existing MSK Connect custom plugin holding the Debezium Oracle connector"
+  type        = string
+  default     = ""
+}
+
+variable "oracle_db_host" {
+  description = "Oracle database hostname or IP reachable from the MSK Connect worker subnets"
+  type        = string
+  default     = ""
+}
+
+variable "oracle_db_port" {
+  description = "Oracle listener port"
+  type        = number
+  default     = 1521
+}
+
+variable "oracle_db_user" {
+  description = "Oracle CDC user (common user, e.g. c##dbzuser, when connecting to a CDB)"
+  type        = string
+  default     = ""
+}
+
+variable "oracle_db_password" {
+  description = "Password for var.oracle_db_user"
+  type        = string
+  default     = ""
+  sensitive   = true
+}
+
+variable "oracle_db_name" {
+  description = "Oracle CDB (container database) service name"
+  type        = string
+  default     = ""
+}
+
+variable "oracle_pdb_name" {
+  description = "Oracle PDB (pluggable database) name; leave empty for a non-CDB database"
+  type        = string
+  default     = ""
+}
+
+variable "oracle_connection_adapter" {
+  description = "Debezium Oracle capture adapter (logminer or xstream)"
+  type        = string
+  default     = "logminer"
+
+  validation {
+    condition     = contains(["logminer", "xstream"], var.oracle_connection_adapter)
+    error_message = "oracle_connection_adapter must be either \"logminer\" or \"xstream\"."
+  }
+}
+
+variable "oracle_topic_prefix" {
+  description = "Kafka topic prefix for Oracle CDC events (must be unique per connector)"
+  type        = string
+  default     = ""
+}
+
+variable "oracle_table_include_list" {
+  description = "Comma-separated Oracle tables to capture (SCHEMA.TABLE format, uppercase)"
+  type        = string
+  default     = ""
+}
+
+variable "oracle_schema_history_topic" {
+  description = "Internal Kafka topic where the Oracle connector stores DDL schema history"
+  type        = string
+  default     = "schemahistory.oracle"
+}
+
+variable "oracle_snapshot_mode" {
+  description = "Debezium Oracle snapshot mode (initial, initial_only, schema_only, never)"
+  type        = string
+  default     = "initial"
+}
+
+variable "oracle_tasks_max" {
+  description = "Maximum number of Oracle connector tasks (Debezium Oracle supports 1)"
+  type        = number
+  default     = 1
+}
+
 # ---- S3 lifecycle -----------------------------------------------------------
 
 variable "data_lake_ia_transition_days" {

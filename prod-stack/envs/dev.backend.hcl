@@ -1,4 +1,4 @@
-# Backend configuration for the DEV environment.
+        # Backend configuration for the DEV environment.
 # Run: terraform init -reconfigure -backend-config=envs/dev.backend.hcl
 #
 # Client-shared state bucket: tfstate-imss-shared-342448511503-us-west-2
