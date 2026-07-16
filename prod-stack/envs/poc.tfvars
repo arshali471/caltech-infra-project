@@ -158,7 +158,7 @@ oracle_connector_type = "custom"
 # in the plugin — switch to a Confluent Hub plugin before using its class.
 oracle_connector_class = ""
 
-      # Plugin name taken verbatim from the app team's config — "fplugin" is theirs,
+# Plugin name taken verbatim from the app team's config — "fplugin" is theirs,
 # not a typo on our side. Must match the registered plugin EXACTLY or plan fails
 # with "no matching MSK Connect Custom Plugin found".
 oracle_connect_custom_plugin_name = "caltech-poc-debezium-oracle-source-fplugin-fix"
@@ -167,9 +167,10 @@ oracle_connect_custom_plugin_name = "caltech-poc-debezium-oracle-source-fplugin-
 # config (2 destroy / 2 add) — expected, since this is a new connector.
 oracle_connector_name_suffix = "debezium-oracle-source-connector-fix"
 
-# ---- Oracle worker capacity (independent of the 5 Postgres connectors) ------
-oracle_min_workers = 1
-oracle_max_workers = 2
+# ---- Oracle worker capacity — FIXED provisioned, no autoscaling -------------
+# Debezium Oracle is single-task (tasks.max = 1), so extra workers only provide
+# failover, not throughput. Set to 2 if you want a standby worker; costs 1 more ENI.
+oracle_worker_count = 1
 
 oracle_db_host     = "10.115.6.11"
 oracle_db_port     = 1920         # non-default listener port (Oracle default is 1521)

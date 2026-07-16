@@ -615,10 +615,10 @@ module "msk_connect_oracle" {
   msk_connect_role_arn  = module.iam.msk_connect_role_arn
   kafkaconnect_version  = var.kafkaconnect_version
 
-  # Oracle runs its own worker counts, independent of the 5 Postgres connectors —
-  # min < max means autoscaling, so this caps Oracle at 2 worker ENIs.
-  min_workers       = var.oracle_min_workers
-  max_workers       = var.oracle_max_workers
+  # Oracle uses FIXED provisioned capacity, not autoscaling. The module selects
+  # provisioned_capacity when min == max, so both are driven from a single count.
+  min_workers       = var.oracle_worker_count
+  max_workers       = var.oracle_worker_count
   mcu_count         = var.msk_connect_mcu_count
   scale_in_cpu_pct  = var.msk_connect_scale_in_cpu_pct
   scale_out_cpu_pct = var.msk_connect_scale_out_cpu_pct

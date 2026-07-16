@@ -622,19 +622,13 @@ variable "oracle_publication_name" {
 }
 
 # ---- Oracle: worker capacity ------------------------------------------------
-# Separate from msk_connect_min/max_workers so the Oracle connector's ENI usage
-# can be tuned without replacing the 5 running Postgres connectors.
+# Fixed PROVISIONED capacity (no autoscaling). Separate from the 5 Postgres
+# connectors' worker vars so Oracle's ENI usage is tuned independently.
 
-variable "oracle_min_workers" {
-  description = "Minimum MSK Connect workers for the Oracle connector"
+variable "oracle_worker_count" {
+  description = "Fixed number of MSK Connect workers for the Oracle connector (provisioned capacity, no autoscaling). Each worker consumes one ENI in the connector subnets"
   type        = number
   default     = 1
-}
-
-variable "oracle_max_workers" {
-  description = "Maximum MSK Connect workers for the Oracle connector. Equal to min = fixed capacity; greater than min = autoscaling"
-  type        = number
-  default     = 2
 }
 
 variable "oracle_snapshot_mode" {
