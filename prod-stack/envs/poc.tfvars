@@ -150,11 +150,15 @@ enable_oracle_source_connector = true
 # Switch to "debezium" for the known-working Debezium property set.
 oracle_connector_type = "custom"
 
-# Per the app team's config. Set to "" to fall back to the class matching
-# oracle_connector_type above.
-oracle_connector_class = "io.confluent.connect.oracle.cdc.OracleCdcSourceConnector"
+# Empty = use the class that matches oracle_connector_type. With type = "custom"
+# / "debezium" that resolves to io.debezium.connector.oracle.OracleConnector,
+# which is the ONLY class inside the caltech-poc-debezium-oracle-source-fplugin-fix
+# plugin ZIP. Setting the Confluent class here fails at runtime with
+# "Failed to find any class that implements Connector" because that class is not
+# in the plugin — switch to a Confluent Hub plugin before using its class.
+oracle_connector_class = ""
 
-# Plugin name taken verbatim from the app team's config — "fplugin" is theirs,
+      # Plugin name taken verbatim from the app team's config — "fplugin" is theirs,
 # not a typo on our side. Must match the registered plugin EXACTLY or plan fails
 # with "no matching MSK Connect Custom Plugin found".
 oracle_connect_custom_plugin_name = "caltech-poc-debezium-oracle-source-fplugin-fix"
