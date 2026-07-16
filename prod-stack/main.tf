@@ -577,36 +577,20 @@ locals {
     }
   )
 
-  # ---- "custom" — the app team's supplied config, rendered verbatim ----------
-  # LogMiner property set with oracle.* prefixes instead of Debezium's database.*
-  # prefixes, no unwrap SMT, and schema.include.list scoped to the Oracle schema.
-  # Kept separate from oracle_debezium_config so the known-working Debezium
-  # property set stays available as a fallback.
+  # ---- "custom" — the app team's supplied config ------------------------------
+  # Identical to oracle_debezium_config plus the five PostgreSQL-only properties
+  # their JSON carries over from the Postgres connectors. Those five have no
+  # meaning for an Oracle source (Oracle uses LogMiner, not logical replication
+  # slots/publications) and are kept only so the rendered config matches the
+  # supplied JSON key-for-key.
   oracle_custom_config = merge(
-    local.oracle_debezium_iam_auth,
-    var.oracle_pdb_name != "" ? { "oracle.pdb.name" = var.oracle_pdb_name } : {},
-    local.oracle_converters,
+    local.oracle_debezium_config,
     {
-      "connector.class"           = local.oracle_class
-      "tasks.max"                 = tostring(var.oracle_tasks_max)
-      "oracle.hostname"           = var.oracle_db_host
-      "oracle.port"               = tostring(var.oracle_db_port)
-      "oracle.user"               = var.oracle_db_user
-      "oracle.password"           = var.oracle_db_password
-      "oracle.dbname"             = var.oracle_db_name
-      "oracle.connection.adapter" = var.oracle_connection_adapter
-      "topic.prefix"              = var.oracle_topic_prefix
-      "schema.include.list"       = var.oracle_schema_include_list
-      "table.include.list"        = var.oracle_table_include_list
-      "snapshot.mode"             = var.oracle_snapshot_mode
-      "heartbeat.interval.ms"     = tostring(var.debezium_heartbeat_interval_ms)
-      "decimal.handling.mode"     = "double"
-      "max.queue.size"            = "100000"
-      "max.batch.size"            = "20000"
-      "poll.interval.ms"          = "100"
-
-      "schema.history.internal.kafka.bootstrap.servers" = module.msk.bootstrap_brokers_iam
-      "schema.history.internal.kafka.topic"             = var.oracle_schema_history_topic
+      "schema.include.list"         = var.oracle_schema_include_list
+      "slot.name"                   = var.oracle_slot_name
+      "slot.drop.on.stop"           = "false"
+      "publication.name"            = var.oracle_publication_name
+      "publication.autocreate.mode" = "all_tables"
     }
   )
 
@@ -630,11 +614,14 @@ module "msk_connect_oracle" {
   private_subnet_ids    = local.msk_connect_subnet_ids
   msk_connect_role_arn  = module.iam.msk_connect_role_arn
   kafkaconnect_version  = var.kafkaconnect_version
-  min_workers           = var.msk_connect_min_workers
-  max_workers           = var.msk_connect_max_workers
-  mcu_count             = var.msk_connect_mcu_count
-  scale_in_cpu_pct      = var.msk_connect_scale_in_cpu_pct
-  scale_out_cpu_pct     = var.msk_connect_scale_out_cpu_pct
+
+  # Oracle runs its own worker counts, independent of the 5 Postgres connectors —
+  # min < max means autoscaling, so this caps Oracle at 2 worker ENIs.
+  min_workers       = var.oracle_min_workers
+  max_workers       = var.oracle_max_workers
+  mcu_count         = var.msk_connect_mcu_count
+  scale_in_cpu_pct  = var.msk_connect_scale_in_cpu_pct
+  scale_out_cpu_pct = var.msk_connect_scale_out_cpu_pct
 
   converter_schemas_enabled = false
 

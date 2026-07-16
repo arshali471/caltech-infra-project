@@ -154,12 +154,18 @@ oracle_connector_type = "custom"
 # oracle_connector_type above.
 oracle_connector_class = "io.confluent.connect.oracle.cdc.OracleCdcSourceConnector"
 
-# Existing plugin — already registered and proven working with the Debezium class.
-oracle_connect_custom_plugin_name = "caltech-poc-debezium-oracle-source-connector-plugin"
+# Plugin name taken verbatim from the app team's config — "fplugin" is theirs,
+# not a typo on our side. Must match the registered plugin EXACTLY or plan fails
+# with "no matching MSK Connect Custom Plugin found".
+oracle_connect_custom_plugin_name = "caltech-poc-debezium-oracle-source-fplugin-fix"
 
-# Matches the connector already in state. Changing this destroys and recreates the
-# connector, its worker config, and its log group.
-oracle_connector_name_suffix = "debezium-oracle-source-connector"
+# Renamed to the "-fix" connector. This REPLACES the previous log group and worker
+# config (2 destroy / 2 add) — expected, since this is a new connector.
+oracle_connector_name_suffix = "debezium-oracle-source-connector-fix"
+
+# ---- Oracle worker capacity (independent of the 5 Postgres connectors) ------
+oracle_min_workers = 1
+oracle_max_workers = 2
 
 oracle_db_host     = "10.115.6.11"
 oracle_db_port     = 1920         # non-default listener port (Oracle default is 1521)
@@ -176,7 +182,14 @@ oracle_table_include_list   = "EXETER.SSS_AREAS"
 oracle_connection_adapter   = "logminer"
 oracle_schema_history_topic = "schemahistory.oracle"
 oracle_snapshot_mode        = "initial"
-oracle_schema_include_list  = "EXETER" # [custom] Oracle schema, not "public"
+
+# ---- used only when oracle_connector_type = "custom" ------------------------
+# PostgreSQL-only properties the app team's config carries over. Inert for an
+# Oracle source (no logical replication slots/publications), kept to match their
+# JSON key-for-key.
+oracle_schema_include_list = "public"
+oracle_slot_name           = "dbz_students_slot_1"
+oracle_publication_name    = "dbz_publication_1"
 
 # ---- used when oracle_connector_type = "confluent" --------------------------
 # Fully-qualified <PDB>.<SCHEMA>.<TABLE>, dots escaped as [.] — NOT the same

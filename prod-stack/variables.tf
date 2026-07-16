@@ -604,9 +604,37 @@ variable "oracle_schema_history_topic" {
 }
 
 variable "oracle_schema_include_list" {
-  description = "[custom] Oracle schema(s) to include in CDC (e.g. EXETER)"
+  description = "[custom] Schema(s) to include in CDC"
   type        = string
   default     = ""
+}
+
+variable "oracle_slot_name" {
+  description = "[custom] PostgreSQL replication slot name. Carried over from the app team's Postgres config; inert for an Oracle source"
+  type        = string
+  default     = ""
+}
+
+variable "oracle_publication_name" {
+  description = "[custom] PostgreSQL publication name. Carried over from the app team's Postgres config; inert for an Oracle source"
+  type        = string
+  default     = ""
+}
+
+# ---- Oracle: worker capacity ------------------------------------------------
+# Separate from msk_connect_min/max_workers so the Oracle connector's ENI usage
+# can be tuned without replacing the 5 running Postgres connectors.
+
+variable "oracle_min_workers" {
+  description = "Minimum MSK Connect workers for the Oracle connector"
+  type        = number
+  default     = 1
+}
+
+variable "oracle_max_workers" {
+  description = "Maximum MSK Connect workers for the Oracle connector. Equal to min = fixed capacity; greater than min = autoscaling"
+  type        = number
+  default     = 2
 }
 
 variable "oracle_snapshot_mode" {
