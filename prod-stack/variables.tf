@@ -604,9 +604,21 @@ variable "oracle_schema_history_topic" {
 }
 
 variable "oracle_schema_include_list" {
-  description = "[custom] Schema(s) to include in CDC"
+  description = "[custom] Schema(s) to include in CDC. Unused by the schema-restricted config (which filters by table.include.list alone)"
   type        = string
   default     = ""
+}
+
+variable "oracle_store_only_captured_tables_ddl" {
+  description = "[custom] Store schema-history DDL only for tables in table.include.list, not the whole database"
+  type        = bool
+  default     = true
+}
+
+variable "oracle_store_only_captured_database_ddl" {
+  description = "[custom] Store schema-history DDL only for the captured database"
+  type        = bool
+  default     = true
 }
 
 variable "oracle_slot_name" {

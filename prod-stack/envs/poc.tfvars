@@ -163,9 +163,9 @@ oracle_connector_class = ""
 # with "no matching MSK Connect Custom Plugin found".
 oracle_connect_custom_plugin_name = "caltech-poc-debezium-oracle-source-fplugin-fix"
 
-# Renamed to the "-fix" connector. This REPLACES the previous log group and worker
-# config (2 destroy / 2 add) — expected, since this is a new connector.
-oracle_connector_name_suffix = "debezium-oracle-source-connector-fix"
+# New "schema-restricted" connector. Changing the suffix REPLACES the previous
+# connector, log group, and worker config — expected, this is a new connector.
+oracle_connector_name_suffix = "debezium-oracle-source-connector-schema-restricted"
 
 # ---- Oracle worker capacity — FIXED provisioned, no autoscaling -------------
 # Debezium Oracle is single-task (tasks.max = 1), so extra workers only provide
@@ -185,16 +185,19 @@ oracle_tasks_max    = 1
 # ---- used when oracle_connector_type = "debezium" or "custom" ---------------
 oracle_table_include_list   = "EXETER.SSS_AREAS"
 oracle_connection_adapter   = "logminer"
-oracle_schema_history_topic = "schemahistory.oracle"
+oracle_schema_history_topic = "schemahistory.oracle1" # per the app team's schema-restricted config
 oracle_snapshot_mode        = "initial"
 
 # ---- used only when oracle_connector_type = "custom" ------------------------
-# PostgreSQL-only properties the app team's config carries over. Inert for an
-# Oracle source (no logical replication slots/publications), kept to match their
-# JSON key-for-key.
-oracle_schema_include_list = "public"
-oracle_slot_name           = "dbz_students_slot_1"
-oracle_publication_name    = "dbz_publication_1"
+# The schema-restricted config filters by table.include.list alone, so
+# oracle_schema_include_list is intentionally not applied.
+# slot.name / publication.name are PostgreSQL carry-overs, inert for Oracle.
+oracle_slot_name        = "dbz_students_slot_1"
+oracle_publication_name = "dbz_publication_1"
+
+# Restrict schema-history DDL capture to the included table only.
+oracle_store_only_captured_tables_ddl   = true
+oracle_store_only_captured_database_ddl = true
 
 # ---- used when oracle_connector_type = "confluent" --------------------------
 # Fully-qualified <PDB>.<SCHEMA>.<TABLE>, dots escaped as [.] — NOT the same

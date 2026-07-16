@@ -577,20 +577,50 @@ locals {
     }
   )
 
-  # ---- "custom" — the app team's supplied config ------------------------------
-  # Identical to oracle_debezium_config plus the five PostgreSQL-only properties
-  # their JSON carries over from the Postgres connectors. Those five have no
-  # meaning for an Oracle source (Oracle uses LogMiner, not logical replication
-  # slots/publications) and are kept only so the rendered config matches the
-  # supplied JSON key-for-key.
+  # ---- "custom" — the app team's supplied "schema-restricted" config ----------
+  # Debezium property set, built explicitly (NOT from oracle_debezium_config)
+  # because it deliberately OMITS two things that map carries:
+  #   • the unwrap SMT — raw Debezium envelope is emitted instead
+  #   • schema.include.list — the connector is restricted by table.include.list
+  #     alone, so no bad "public" schema filter (hence the -schema-restricted name)
+  # It ADDS the two store.only.captured.*.ddl flags so schema history records DDL
+  # only for the captured table, and uses its own history topic.
+  # slot.name / publication.* are PostgreSQL carry-overs, inert for Oracle, kept
+  # to match the supplied JSON key-for-key.
   oracle_custom_config = merge(
-    local.oracle_debezium_config,
+    local.oracle_debezium_iam_auth,
+    local.oracle_debezium_pdb,
+    local.oracle_converters,
     {
-      "schema.include.list"         = var.oracle_schema_include_list
+      "connector.class"             = local.oracle_class
+      "tasks.max"                   = tostring(var.oracle_tasks_max)
+      "database.hostname"           = var.oracle_db_host
+      "database.port"               = tostring(var.oracle_db_port)
+      "database.user"               = var.oracle_db_user
+      "database.password"           = var.oracle_db_password
+      "database.dbname"             = var.oracle_db_name
+      "database.connection.adapter" = var.oracle_connection_adapter
+      "topic.prefix"                = var.oracle_topic_prefix
+      "table.include.list"          = var.oracle_table_include_list
+      "snapshot.mode"               = var.oracle_snapshot_mode
+      "heartbeat.interval.ms"       = tostring(var.debezium_heartbeat_interval_ms)
+      "decimal.handling.mode"       = "double"
+      "time.precision.mode"         = "connect"
+      "max.queue.size"              = "200000"
+      "max.batch.size"              = "20000"
+      "poll.interval.ms"            = "100"
+
+      # PostgreSQL carry-overs — inert for an Oracle source.
       "slot.name"                   = var.oracle_slot_name
       "slot.drop.on.stop"           = "false"
       "publication.name"            = var.oracle_publication_name
       "publication.autocreate.mode" = "all_tables"
+
+      # Schema history (required by the Oracle connector).
+      "schema.history.internal.kafka.bootstrap.servers"          = module.msk.bootstrap_brokers_iam
+      "schema.history.internal.kafka.topic"                      = var.oracle_schema_history_topic
+      "schema.history.internal.store.only.captured.tables.ddl"   = tostring(var.oracle_store_only_captured_tables_ddl)
+      "schema.history.internal.store.only.captured.database.ddl" = tostring(var.oracle_store_only_captured_database_ddl)
     }
   )
 
