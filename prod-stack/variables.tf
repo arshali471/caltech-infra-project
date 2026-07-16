@@ -609,14 +609,40 @@ variable "oracle_schema_include_list" {
   default     = ""
 }
 
+# ---- Oracle: schema-restricted (second connector, alongside -fix) -----------
+
+variable "enable_oracle_schema_restricted_connector" {
+  description = "Create the second, schema-restricted Oracle connector (independent of the -fix connector)"
+  type        = bool
+  default     = false
+}
+
+variable "oracle_schema_restricted_name_suffix" {
+  description = "Connector name suffix for the schema-restricted connector"
+  type        = string
+  default     = "debezium-oracle-source-connector-schema-restricted"
+}
+
+variable "oracle_schema_restricted_topic_prefix" {
+  description = "Kafka topic prefix for the schema-restricted connector. Keep DISTINCT from oracle_topic_prefix or both connectors write the same table topics"
+  type        = string
+  default     = ""
+}
+
+variable "oracle_schema_restricted_history_topic" {
+  description = "Schema-history topic for the schema-restricted connector. Must differ from oracle_schema_history_topic"
+  type        = string
+  default     = "schemahistory.oracle1"
+}
+
 variable "oracle_store_only_captured_tables_ddl" {
-  description = "[custom] Store schema-history DDL only for tables in table.include.list, not the whole database"
+  description = "[schema-restricted] Store schema-history DDL only for tables in table.include.list, not the whole database"
   type        = bool
   default     = true
 }
 
 variable "oracle_store_only_captured_database_ddl" {
-  description = "[custom] Store schema-history DDL only for the captured database"
+  description = "[schema-restricted] Store schema-history DDL only for the captured database"
   type        = bool
   default     = true
 }

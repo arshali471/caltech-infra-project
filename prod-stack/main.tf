@@ -577,17 +577,37 @@ locals {
     }
   )
 
-  # ---- "custom" — the app team's supplied "schema-restricted" config ----------
+  # ---- "custom" — the config the RUNNING -fix connector uses ------------------
+  # oracle_debezium_config (incl. the unwrap SMT + schema.history.oracle topic)
+  # plus schema.include.list and the PostgreSQL slot/publication carry-overs.
+  # Must stay byte-identical to what is deployed, or Terraform would replace the
+  # running connector. Do NOT edit this to add features — add a new connector.
+  oracle_custom_config = merge(
+    local.oracle_debezium_config,
+    {
+      "schema.include.list"         = var.oracle_schema_include_list
+      "slot.name"                   = var.oracle_slot_name
+      "slot.drop.on.stop"           = "false"
+      "publication.name"            = var.oracle_publication_name
+      "publication.autocreate.mode" = "all_tables"
+    }
+  )
+
+  oracle_connector_configuration = {
+    debezium  = local.oracle_debezium_config
+    confluent = local.oracle_confluent_config
+    custom    = local.oracle_custom_config
+  }[var.oracle_connector_type]
+
+  # ---- schema-restricted — the NEW second connector ---------------------------
   # Debezium property set, built explicitly (NOT from oracle_debezium_config)
   # because it deliberately OMITS two things that map carries:
   #   • the unwrap SMT — raw Debezium envelope is emitted instead
-  #   • schema.include.list — the connector is restricted by table.include.list
-  #     alone, so no bad "public" schema filter (hence the -schema-restricted name)
-  # It ADDS the two store.only.captured.*.ddl flags so schema history records DDL
-  # only for the captured table, and uses its own history topic.
-  # slot.name / publication.* are PostgreSQL carry-overs, inert for Oracle, kept
-  # to match the supplied JSON key-for-key.
-  oracle_custom_config = merge(
+  #   • schema.include.list — restricted by table.include.list alone (no bad
+  #     "public" schema filter, hence the name)
+  # It ADDS the two store.only.captured.*.ddl flags and uses its own schema
+  # history topic so it never collides with the -fix connector's history.
+  oracle_schema_restricted_config = merge(
     local.oracle_debezium_iam_auth,
     local.oracle_debezium_pdb,
     local.oracle_converters,
@@ -600,7 +620,7 @@ locals {
       "database.password"           = var.oracle_db_password
       "database.dbname"             = var.oracle_db_name
       "database.connection.adapter" = var.oracle_connection_adapter
-      "topic.prefix"                = var.oracle_topic_prefix
+      "topic.prefix"                = var.oracle_schema_restricted_topic_prefix
       "table.include.list"          = var.oracle_table_include_list
       "snapshot.mode"               = var.oracle_snapshot_mode
       "heartbeat.interval.ms"       = tostring(var.debezium_heartbeat_interval_ms)
@@ -616,19 +636,13 @@ locals {
       "publication.name"            = var.oracle_publication_name
       "publication.autocreate.mode" = "all_tables"
 
-      # Schema history (required by the Oracle connector).
+      # Schema history — own topic, DDL restricted to the captured table.
       "schema.history.internal.kafka.bootstrap.servers"          = module.msk.bootstrap_brokers_iam
-      "schema.history.internal.kafka.topic"                      = var.oracle_schema_history_topic
+      "schema.history.internal.kafka.topic"                      = var.oracle_schema_restricted_history_topic
       "schema.history.internal.store.only.captured.tables.ddl"   = tostring(var.oracle_store_only_captured_tables_ddl)
       "schema.history.internal.store.only.captured.database.ddl" = tostring(var.oracle_store_only_captured_database_ddl)
     }
   )
-
-  oracle_connector_configuration = {
-    debezium  = local.oracle_debezium_config
-    confluent = local.oracle_confluent_config
-    custom    = local.oracle_custom_config
-  }[var.oracle_connector_type]
 }
 
 module "msk_connect_oracle" {
@@ -656,6 +670,41 @@ module "msk_connect_oracle" {
   converter_schemas_enabled = false
 
   connector_configuration = local.oracle_connector_configuration
+
+  tags = var.tags
+}
+
+###############################################################################
+# Step 9c — Second Oracle connector: schema-restricted
+# A SEPARATE module instance so it is created ALONGSIDE the running -fix
+# connector without replacing it. Same plugin, same Oracle source; differs only
+# in the connector config (see local.oracle_schema_restricted_config) and name.
+# Toggled independently of the -fix connector.
+###############################################################################
+
+module "msk_connect_oracle_schema_restricted" {
+  source = "./modules/msk_connect"
+
+  count = var.enable_oracle_schema_restricted_connector ? 1 : 0
+
+  name                  = local.name
+  connector_name_suffix = var.oracle_schema_restricted_name_suffix
+  custom_plugin_name    = var.oracle_connect_custom_plugin_name
+  bootstrap_servers     = module.msk.bootstrap_brokers_iam
+  msk_connect_sg_id     = module.security_groups.msk_connect_sg_id
+  private_subnet_ids    = local.msk_connect_subnet_ids
+  msk_connect_role_arn  = module.iam.msk_connect_role_arn
+  kafkaconnect_version  = var.kafkaconnect_version
+
+  min_workers       = var.oracle_worker_count
+  max_workers       = var.oracle_worker_count
+  mcu_count         = var.msk_connect_mcu_count
+  scale_in_cpu_pct  = var.msk_connect_scale_in_cpu_pct
+  scale_out_cpu_pct = var.msk_connect_scale_out_cpu_pct
+
+  converter_schemas_enabled = false
+
+  connector_configuration = local.oracle_schema_restricted_config
 
   tags = var.tags
 }

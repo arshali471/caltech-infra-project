@@ -163,9 +163,9 @@ oracle_connector_class = ""
 # with "no matching MSK Connect Custom Plugin found".
 oracle_connect_custom_plugin_name = "caltech-poc-debezium-oracle-source-fplugin-fix"
 
-# New "schema-restricted" connector. Changing the suffix REPLACES the previous
-# connector, log group, and worker config — expected, this is a new connector.
-oracle_connector_name_suffix = "debezium-oracle-source-connector-schema-restricted"
+# CONNECTOR 1 (already RUNNING) — must stay exactly as deployed so Terraform
+# does not replace it. Do not change this suffix or connector-1's config.
+oracle_connector_name_suffix = "debezium-oracle-source-connector-fix"
 
 # ---- Oracle worker capacity — FIXED provisioned, no autoscaling -------------
 # Debezium Oracle is single-task (tasks.max = 1), so extra workers only provide
@@ -185,15 +185,26 @@ oracle_tasks_max    = 1
 # ---- used when oracle_connector_type = "debezium" or "custom" ---------------
 oracle_table_include_list   = "EXETER.SSS_AREAS"
 oracle_connection_adapter   = "logminer"
-oracle_schema_history_topic = "schemahistory.oracle1" # per the app team's schema-restricted config
+oracle_schema_history_topic = "schemahistory.oracle" # connector 1's history topic — leave as-is
 oracle_snapshot_mode        = "initial"
 
-# ---- used only when oracle_connector_type = "custom" ------------------------
-# The schema-restricted config filters by table.include.list alone, so
-# oracle_schema_include_list is intentionally not applied.
-# slot.name / publication.name are PostgreSQL carry-overs, inert for Oracle.
-oracle_slot_name        = "dbz_students_slot_1"
-oracle_publication_name = "dbz_publication_1"
+# ---- used only when oracle_connector_type = "custom" (connector 1) ----------
+oracle_schema_include_list = "public"              # connector 1's existing value — do not change
+oracle_slot_name           = "dbz_students_slot_1" # PG carry-over, inert for Oracle
+oracle_publication_name    = "dbz_publication_1"   # PG carry-over, inert for Oracle
+
+# ============================================================================
+# CONNECTOR 2 (NEW) — schema-restricted, created alongside connector 1
+# ============================================================================
+enable_oracle_schema_restricted_connector = true
+oracle_schema_restricted_name_suffix      = "debezium-oracle-source-connector-schema-restricted"
+
+# NOTE: same topic.prefix as connector 1 means BOTH write table topic
+# "caltech_poc_oracle_test.EXETER.SSS_AREAS" — with different record shapes
+# (connector 1 unwraps, connector 2 does not). Change this to a distinct prefix
+# if you don't want them sharing a topic.
+oracle_schema_restricted_topic_prefix  = "caltech_poc_oracle_test"
+oracle_schema_restricted_history_topic = "schemahistory.oracle1" # distinct from connector 1
 
 # Restrict schema-history DDL capture to the included table only.
 oracle_store_only_captured_tables_ddl   = true
