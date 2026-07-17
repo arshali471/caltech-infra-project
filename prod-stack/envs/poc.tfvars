@@ -36,7 +36,7 @@ enable_nat_gateway   = true
 vpc_id                 = "vpc-0ed44b92f11b73815"
 public_subnet_ids      = ["subnet-038946a978f266b7d", "subnet-052b8a9527604c064"]
 private_subnet_ids     = ["subnet-0afa40d43201113c7", "subnet-09fbbd79068ad5555"]
-msk_subnet_ids         = ["subnet-0afa40d43201113c7", "subnet-09fbbd79068ad5555", "subnet-069266bf3b71d537e"]
+msk_subnet_ids            = ["subnet-0afa40d43201113c7", "subnet-09fbbd79068ad5555", "subnet-069266bf3b71d537e"]
 elasticache_subnet_ids = ["subnet-09fbbd79068ad5555", "subnet-069266bf3b71d537e"]
 
 # MSK Connect worker ENI placement.
@@ -156,7 +156,7 @@ oracle_connector_type = "custom"
 # which is the ONLY class inside the caltech-poc-debezium-oracle-source-fplugin-fix
 # plugin ZIP. Setting the Confluent class here fails at runtime with
 # "Failed to find any class that implements Connector" because that class is not
-# in the plugin — switch to a Confluent Hub plugin before using its class.
+  ch to a Confluent Hub plugin before using its class.
 oracle_connector_class = ""
 
 # Plugin name taken verbatim from the app team's config — "fplugin" is theirs,
@@ -224,6 +224,21 @@ oracle_001_history_topic = "schemahistory.oracle001" # distinct from oracle / or
 
 oracle_001_schema_include_list = "EXETER"
 oracle_001_table_include_list  = "EXETER.SSS_AREAS,EXETER.SSS_STUDENT_ENROLLMENTS,EXETER.SSS_COURSE_CATALOG,EXETER.SSS_SECTIONS"
+
+# ============================================================================
+# CONNECTOR 4 (NEW) — 002: whole-schema capture, routed into a single topic
+# ============================================================================
+enable_oracle_002_connector = true
+oracle_002_name_suffix      = "debezium-oracle-source-connector-002"
+
+oracle_002_topic_prefix  = "caltech_poc_oracle"
+oracle_002_router_topic  = "caltech_poc_oracle_topic002"
+oracle_002_history_topic = "schemahistory.oracle002" # distinct from oracle001
+
+# No table.include.list in the supplied config → captures the WHOLE EXETER schema.
+# Set a comma-separated list here to restrict it.
+oracle_002_schema_include_list = "EXETER"
+oracle_002_table_include_list  = ""
 
 # ---- used when oracle_connector_type = "confluent" --------------------------
 # Fully-qualified <PDB>.<SCHEMA>.<TABLE>, dots escaped as [.] — NOT the same

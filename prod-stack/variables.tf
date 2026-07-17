@@ -691,6 +691,50 @@ variable "oracle_001_table_include_list" {
   default     = ""
 }
 
+# ---- Oracle: 002 (fourth connector — whole-schema, single routed topic) -----
+
+variable "enable_oracle_002_connector" {
+  description = "Create the fourth Oracle connector (002), independent of the others"
+  type        = bool
+  default     = false
+}
+
+variable "oracle_002_name_suffix" {
+  description = "Connector name suffix for the 002 connector"
+  type        = string
+  default     = "debezium-oracle-source-connector-002"
+}
+
+variable "oracle_002_topic_prefix" {
+  description = "Debezium topic.prefix for the 002 connector"
+  type        = string
+  default     = "caltech_poc_oracle"
+}
+
+variable "oracle_002_router_topic" {
+  description = "Single destination topic that ByLogicalTableRouter folds all captured 002 tables into"
+  type        = string
+  default     = "caltech_poc_oracle_topic002"
+}
+
+variable "oracle_002_history_topic" {
+  description = "Schema-history topic for the 002 connector. Must differ from the other connectors' history topics"
+  type        = string
+  default     = "schemahistory.oracle002"
+}
+
+variable "oracle_002_schema_include_list" {
+  description = "Schema(s) the 002 connector captures (e.g. EXETER)"
+  type        = string
+  default     = ""
+}
+
+variable "oracle_002_table_include_list" {
+  description = "Comma-separated SCHEMA.TABLE list for 002. Empty = capture ALL tables in schema.include.list"
+  type        = string
+  default     = ""
+}
+
 variable "oracle_slot_name" {
   description = "[custom] PostgreSQL replication slot name. Carried over from the app team's Postgres config; inert for an Oracle source"
   type        = string
