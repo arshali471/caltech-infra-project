@@ -36,7 +36,7 @@ enable_nat_gateway   = true
 vpc_id                 = "vpc-0ed44b92f11b73815"
 public_subnet_ids      = ["subnet-038946a978f266b7d", "subnet-052b8a9527604c064"]
 private_subnet_ids     = ["subnet-0afa40d43201113c7", "subnet-09fbbd79068ad5555"]
-msk_subnet_ids            = ["subnet-0afa40d43201113c7", "subnet-09fbbd79068ad5555", "subnet-069266bf3b71d537e"]
+msk_subnet_ids         = ["subnet-0afa40d43201113c7", "subnet-09fbbd79068ad5555", "subnet-069266bf3b71d537e"]
 elasticache_subnet_ids = ["subnet-09fbbd79068ad5555", "subnet-069266bf3b71d537e"]
 
 # MSK Connect worker ENI placement.
@@ -48,9 +48,9 @@ elasticache_subnet_ids = ["subnet-09fbbd79068ad5555", "subnet-069266bf3b71d537e"
 #   • subnet-069266bf3b71d537e (us-west-2c, 6 free IPs) — AZ partner
 # Total: 70 IPs for 5 connectors × max 4 workers = 20 ENIs (3.5x headroom).
 msk_connect_subnet_ids = [
-  "subnet-0e525948c54e72b45",   # NEW — 64 free IPs
+  "subnet-0e525948c54e72b45", # NEW — 64 free IPs
   "subnet-09fbbd79068ad5555",
- #  "subnet-069266bf3b71d537e",   # us-west-2c — 6 free IPs (AZ partner)
+  #  "subnet-069266bf3b71d537e",   # us-west-2c — 6 free IPs (AZ partner)
 ]
 
 # ---- Network ports ---------------------------------------------------------
@@ -156,7 +156,7 @@ oracle_connector_type = "custom"
 # which is the ONLY class inside the caltech-poc-debezium-oracle-source-fplugin-fix
 # plugin ZIP. Setting the Confluent class here fails at runtime with
 # "Failed to find any class that implements Connector" because that class is not
-  ch to a Confluent Hub plugin before using its class.
+# in the plugin — switch to a Confluent Hub plugin before using its class.
 oracle_connector_class = ""
 
 # Plugin name taken verbatim from the app team's config — "fplugin" is theirs,
