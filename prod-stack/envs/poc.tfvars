@@ -48,8 +48,9 @@ elasticache_subnet_ids = ["subnet-09fbbd79068ad5555", "subnet-069266bf3b71d537e"
 #   • subnet-069266bf3b71d537e (us-west-2c, 6 free IPs) — AZ partner
 # Total: 70 IPs for 5 connectors × max 4 workers = 20 ENIs (3.5x headroom).
 msk_connect_subnet_ids = [
-  "subnet-0e525948c54e72b45", # NEW — 64 free IPs
-  "subnet-069266bf3b71d537e", # us-west-2c — 6 free IPs (AZ partner)
+  "subnet-0e525948c54e72b45",   # NEW — 64 free IPs
+  "subnet-09fbbd79068ad5555",
+ #  "subnet-069266bf3b71d537e",   # us-west-2c — 6 free IPs (AZ partner)
 ]
 
 # ---- Network ports ---------------------------------------------------------
