@@ -643,6 +643,54 @@ locals {
       "schema.history.internal.store.only.captured.database.ddl" = tostring(var.oracle_store_only_captured_database_ddl)
     }
   )
+
+  # ---- 001 — third connector: multi-table, routed to a single topic -----------
+  # Captures several Exeter tables and uses the ByLogicalTableRouter SMT to fold
+  # them all into ONE Kafka topic (var.oracle_001_router_topic), then unwraps.
+  # SMT ORDER MATTERS: "router,unwrap" runs the router first. Its own history
+  # topic and topic.prefix keep it isolated from connectors 1 and 2.
+  oracle_001_config = merge(
+    local.oracle_debezium_iam_auth,
+    local.oracle_debezium_pdb,
+    local.oracle_converters,
+    {
+      "connector.class"             = local.oracle_class
+      "tasks.max"                   = tostring(var.oracle_tasks_max)
+      "database.hostname"           = var.oracle_db_host
+      "database.port"               = tostring(var.oracle_db_port)
+      "database.user"               = var.oracle_db_user
+      "database.password"           = var.oracle_db_password
+      "database.dbname"             = var.oracle_db_name
+      "database.connection.adapter" = var.oracle_connection_adapter
+      "topic.prefix"                = var.oracle_001_topic_prefix
+      "schema.include.list"         = var.oracle_001_schema_include_list
+      "table.include.list"          = var.oracle_001_table_include_list
+      "snapshot.mode"               = var.oracle_snapshot_mode
+      "heartbeat.interval.ms"       = tostring(var.debezium_heartbeat_interval_ms)
+      "decimal.handling.mode"       = "double"
+      "time.precision.mode"         = "connect"
+      "max.queue.size"              = "200000"
+      "max.batch.size"              = "20000"
+      "poll.interval.ms"            = "100"
+
+      # Route every captured table into a single topic, then unwrap the envelope.
+      "transforms"                               = "router,unwrap"
+      "transforms.router.type"                   = "io.debezium.transforms.ByLogicalTableRouter"
+      "transforms.router.topic.regex"            = ".*"
+      "transforms.router.topic.replacement"      = var.oracle_001_router_topic
+      "transforms.router.key.enforce.uniqueness" = "true"
+      "transforms.unwrap.type"                   = "io.debezium.transforms.ExtractNewRecordState"
+      "transforms.unwrap.drop.tombstones"        = "false"
+      "transforms.unwrap.delete.handling.mode"   = "drop"
+      "transforms.unwrap.add.headers"            = "op,ts_ms,source.ts_ms,source.table"
+
+      # Schema history — own topic, DDL restricted to captured tables.
+      "schema.history.internal.kafka.bootstrap.servers"          = module.msk.bootstrap_brokers_iam
+      "schema.history.internal.kafka.topic"                      = var.oracle_001_history_topic
+      "schema.history.internal.store.only.captured.tables.ddl"   = tostring(var.oracle_store_only_captured_tables_ddl)
+      "schema.history.internal.store.only.captured.database.ddl" = tostring(var.oracle_store_only_captured_database_ddl)
+    }
+  )
 }
 
 module "msk_connect_oracle" {
@@ -705,6 +753,39 @@ module "msk_connect_oracle_schema_restricted" {
   converter_schemas_enabled = false
 
   connector_configuration = local.oracle_schema_restricted_config
+
+  tags = var.tags
+}
+
+###############################################################################
+# Step 9d — Third Oracle connector: 001 (multi-table, single routed topic)
+# Independent module, created alongside connectors 1 and 2 without replacing
+# them. See local.oracle_001_config for the config (ByLogicalTableRouter SMT).
+###############################################################################
+
+module "msk_connect_oracle_001" {
+  source = "./modules/msk_connect"
+
+  count = var.enable_oracle_001_connector ? 1 : 0
+
+  name                  = local.name
+  connector_name_suffix = var.oracle_001_name_suffix
+  custom_plugin_name    = var.oracle_connect_custom_plugin_name
+  bootstrap_servers     = module.msk.bootstrap_brokers_iam
+  msk_connect_sg_id     = module.security_groups.msk_connect_sg_id
+  private_subnet_ids    = local.msk_connect_subnet_ids
+  msk_connect_role_arn  = module.iam.msk_connect_role_arn
+  kafkaconnect_version  = var.kafkaconnect_version
+
+  min_workers       = var.oracle_worker_count
+  max_workers       = var.oracle_worker_count
+  mcu_count         = var.msk_connect_mcu_count
+  scale_in_cpu_pct  = var.msk_connect_scale_in_cpu_pct
+  scale_out_cpu_pct = var.msk_connect_scale_out_cpu_pct
+
+  converter_schemas_enabled = false
+
+  connector_configuration = local.oracle_001_config
 
   tags = var.tags
 }

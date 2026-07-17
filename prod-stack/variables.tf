@@ -636,15 +636,59 @@ variable "oracle_schema_restricted_history_topic" {
 }
 
 variable "oracle_store_only_captured_tables_ddl" {
-  description = "[schema-restricted] Store schema-history DDL only for tables in table.include.list, not the whole database"
+  description = "[schema-restricted/001] Store schema-history DDL only for tables in table.include.list, not the whole database"
   type        = bool
   default     = true
 }
 
 variable "oracle_store_only_captured_database_ddl" {
-  description = "[schema-restricted] Store schema-history DDL only for the captured database"
+  description = "[schema-restricted/001] Store schema-history DDL only for the captured database"
   type        = bool
   default     = true
+}
+
+# ---- Oracle: 001 (third connector — multi-table, single routed topic) -------
+
+variable "enable_oracle_001_connector" {
+  description = "Create the third Oracle connector (001), independent of connectors 1 and 2"
+  type        = bool
+  default     = false
+}
+
+variable "oracle_001_name_suffix" {
+  description = "Connector name suffix for the 001 connector"
+  type        = string
+  default     = "debezium-oracle-source-connector-001"
+}
+
+variable "oracle_001_topic_prefix" {
+  description = "Debezium topic.prefix for the 001 connector (namespaces its schema-history/internal topics)"
+  type        = string
+  default     = "caltech_poc_oracle"
+}
+
+variable "oracle_001_router_topic" {
+  description = "Single destination topic that ByLogicalTableRouter folds all captured 001 tables into"
+  type        = string
+  default     = "caltech_poc_oracle_topic001"
+}
+
+variable "oracle_001_history_topic" {
+  description = "Schema-history topic for the 001 connector. Must differ from the other connectors' history topics"
+  type        = string
+  default     = "schemahistory.oracle001"
+}
+
+variable "oracle_001_schema_include_list" {
+  description = "Schema(s) the 001 connector captures (e.g. EXETER)"
+  type        = string
+  default     = ""
+}
+
+variable "oracle_001_table_include_list" {
+  description = "Comma-separated SCHEMA.TABLE list the 001 connector captures"
+  type        = string
+  default     = ""
 }
 
 variable "oracle_slot_name" {

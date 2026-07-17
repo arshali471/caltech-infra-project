@@ -210,6 +210,20 @@ oracle_schema_restricted_history_topic = "schemahistory.oracle1" # distinct from
 oracle_store_only_captured_tables_ddl   = true
 oracle_store_only_captured_database_ddl = true
 
+# ============================================================================
+# CONNECTOR 3 (NEW) — 001: multi-table, routed into a single topic
+# ============================================================================
+enable_oracle_001_connector = true
+oracle_001_name_suffix      = "debezium-oracle-source-connector-001"
+
+# ByLogicalTableRouter folds all four tables below into this ONE topic.
+oracle_001_topic_prefix  = "caltech_poc_oracle"
+oracle_001_router_topic  = "caltech_poc_oracle_topic001"
+oracle_001_history_topic = "schemahistory.oracle001" # distinct from oracle / oracle1
+
+oracle_001_schema_include_list = "EXETER"
+oracle_001_table_include_list  = "EXETER.SSS_AREAS,EXETER.SSS_STUDENT_ENROLLMENTS,EXETER.SSS_COURSE_CATALOG,EXETER.SSS_SECTIONS"
+
 # ---- used when oracle_connector_type = "confluent" --------------------------
 # Fully-qualified <PDB>.<SCHEMA>.<TABLE>, dots escaped as [.] — NOT the same
 # format as oracle_table_include_list above.
