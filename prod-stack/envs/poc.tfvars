@@ -240,6 +240,20 @@ oracle_002_history_topic = "schemahistory.oracle002" # distinct from oracle001
 oracle_002_schema_include_list = "EXETER"
 oracle_002_table_include_list  = ""
 
+# ============================================================================
+# CONNECTOR 5 (NEW) — 003: multi-table routed, no schema-change topic
+# ============================================================================
+enable_oracle_003_connector = true
+oracle_003_name_suffix      = "debezium-oracle-source-connector-003"
+
+oracle_003_topic_prefix  = "caltech_poc_oracle"
+oracle_003_router_topic  = "caltech_poc_oracle_topic003"
+oracle_003_history_topic = "schemahistory.oracle003" # distinct from oracle001/oracle002
+
+oracle_003_schema_include_list    = "EXETER"
+oracle_003_table_include_list     = "EXETER.SSS_COURSE_AREAS,EXETER.SSS_COURSE_GRADE_SYSTEMS,EXETER.SSS_ENROLLMENT_SESSION,EXETER.SSS_STUDENT_DEGREES,EXETER.SSS_BATCH_STATUS_DTL,EXETER.SSS_SECTION_TIMES"
+oracle_003_include_schema_changes = false
+
 # ---- used when oracle_connector_type = "confluent" --------------------------
 # Fully-qualified <PDB>.<SCHEMA>.<TABLE>, dots escaped as [.] — NOT the same
 # format as oracle_table_include_list above.

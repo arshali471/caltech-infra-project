@@ -735,6 +735,56 @@ variable "oracle_002_table_include_list" {
   default     = ""
 }
 
+# ---- Oracle: 003 (fifth connector — multi-table routed, no schema changes) --
+
+variable "enable_oracle_003_connector" {
+  description = "Create the fifth Oracle connector (003), independent of the others"
+  type        = bool
+  default     = false
+}
+
+variable "oracle_003_name_suffix" {
+  description = "Connector name suffix for the 003 connector"
+  type        = string
+  default     = "debezium-oracle-source-connector-003"
+}
+
+variable "oracle_003_topic_prefix" {
+  description = "Debezium topic.prefix for the 003 connector"
+  type        = string
+  default     = "caltech_poc_oracle"
+}
+
+variable "oracle_003_router_topic" {
+  description = "Single destination topic that ByLogicalTableRouter folds all captured 003 tables into"
+  type        = string
+  default     = "caltech_poc_oracle_topic003"
+}
+
+variable "oracle_003_history_topic" {
+  description = "Schema-history topic for the 003 connector. Must differ from the other connectors' history topics"
+  type        = string
+  default     = "schemahistory.oracle003"
+}
+
+variable "oracle_003_schema_include_list" {
+  description = "Schema(s) the 003 connector captures (e.g. EXETER)"
+  type        = string
+  default     = ""
+}
+
+variable "oracle_003_table_include_list" {
+  description = "Comma-separated SCHEMA.TABLE list the 003 connector captures"
+  type        = string
+  default     = ""
+}
+
+variable "oracle_003_include_schema_changes" {
+  description = "Whether the 003 connector emits schema-change events to a separate topic"
+  type        = bool
+  default     = false
+}
+
 variable "oracle_slot_name" {
   description = "[custom] PostgreSQL replication slot name. Carried over from the app team's Postgres config; inert for an Oracle source"
   type        = string
