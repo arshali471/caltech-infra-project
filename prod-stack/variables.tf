@@ -785,6 +785,50 @@ variable "oracle_003_include_schema_changes" {
   default     = false
 }
 
+# ---- Oracle: 004 (sixth connector — schema_only, scoped router regex) --------
+
+variable "enable_oracle_004_connector" {
+  description = "Create the sixth Oracle connector (004), independent of the others"
+  type        = bool
+  default     = false
+}
+
+variable "oracle_004_name_suffix" {
+  description = "Connector name suffix for the 004 connector"
+  type        = string
+  default     = "debezium-oracle-source-connector-004"
+}
+
+variable "oracle_004_topic_prefix" {
+  description = "Debezium topic.prefix for the 004 connector (distinct so its internal topics don't collide with the others)"
+  type        = string
+  default     = "caltech_poc_oracle_004"
+}
+
+variable "oracle_004_router_topic_regex" {
+  description = "Regex the router matches before rewriting. Use \\\\. for a literal dot in HCL, e.g. \"caltech_poc_oracle_004\\\\..*\""
+  type        = string
+  default     = "caltech_poc_oracle_004\\..*"
+}
+
+variable "oracle_004_router_topic" {
+  description = "Single destination topic the 004 router rewrites matched topics to"
+  type        = string
+  default     = "caltech_poc_oracle_topic004"
+}
+
+variable "oracle_004_history_topic" {
+  description = "Schema-history topic for the 004 connector. Must differ from the other connectors' history topics"
+  type        = string
+  default     = "schemahistory.oracle2"
+}
+
+variable "oracle_004_snapshot_mode" {
+  description = "Snapshot mode for 004 (schema_only = capture schema then stream changes, no data backfill)"
+  type        = string
+  default     = "schema_only"
+}
+
 variable "oracle_slot_name" {
   description = "[custom] PostgreSQL replication slot name. Carried over from the app team's Postgres config; inert for an Oracle source"
   type        = string

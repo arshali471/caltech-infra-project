@@ -254,6 +254,23 @@ oracle_003_schema_include_list    = "EXETER"
 oracle_003_table_include_list     = "EXETER.SSS_COURSE_AREAS,EXETER.SSS_COURSE_GRADE_SYSTEMS,EXETER.SSS_ENROLLMENT_SESSION,EXETER.SSS_STUDENT_DEGREES,EXETER.SSS_BATCH_STATUS_DTL,EXETER.SSS_SECTION_TIMES"
 oracle_003_include_schema_changes = false
 
+# ============================================================================
+# CONNECTOR 6 (NEW) — 004: schema_only snapshot, scoped router regex
+# ============================================================================
+enable_oracle_004_connector = true
+oracle_004_name_suffix      = "debezium-oracle-source-connector-004"
+
+# Distinct topic.prefix this time — its internal topics won't share with 001-003.
+oracle_004_topic_prefix = "caltech_poc_oracle_004"
+
+# Router only rewrites topics under this prefix. \\. is a literal dot in HCL.
+oracle_004_router_topic_regex = "caltech_poc_oracle_004\\..*"
+oracle_004_router_topic       = "caltech_poc_oracle_topic004"
+oracle_004_history_topic      = "schemahistory.oracle2" # per supplied config
+
+# schema_only = capture schema then stream live changes, no initial data backfill.
+oracle_004_snapshot_mode = "schema_only"
+
 # ---- used when oracle_connector_type = "confluent" --------------------------
 # Fully-qualified <PDB>.<SCHEMA>.<TABLE>, dots escaped as [.] — NOT the same
 # format as oracle_table_include_list above.
