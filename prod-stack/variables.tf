@@ -829,6 +829,38 @@ variable "oracle_004_snapshot_mode" {
   default     = "schema_only"
 }
 
+# ---- Oracle: 005 (seventh connector — unwrap only, schema_only) --------------
+
+variable "enable_oracle_005_connector" {
+  description = "Create the seventh Oracle connector (005), independent of the others"
+  type        = bool
+  default     = false
+}
+
+variable "oracle_005_name_suffix" {
+  description = "Connector name suffix for the 005 connector"
+  type        = string
+  default     = "debezium-oracle-source-connector-005"
+}
+
+variable "oracle_005_topic_prefix" {
+  description = "Debezium topic.prefix for the 005 connector (distinct so its internal topics don't collide with the others)"
+  type        = string
+  default     = "caltech_poc_oracle_005"
+}
+
+variable "oracle_005_history_topic" {
+  description = "Schema-history topic for the 005 connector. Must differ from the other connectors' history topics"
+  type        = string
+  default     = "schemahistory.oracle005"
+}
+
+variable "oracle_005_snapshot_mode" {
+  description = "Snapshot mode for 005 (schema_only = capture schema then stream changes, no data backfill)"
+  type        = string
+  default     = "schema_only"
+}
+
 variable "oracle_slot_name" {
   description = "[custom] PostgreSQL replication slot name. Carried over from the app team's Postgres config; inert for an Oracle source"
   type        = string

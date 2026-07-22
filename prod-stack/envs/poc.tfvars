@@ -271,6 +271,16 @@ oracle_004_history_topic      = "schemahistory.oracle2" # per supplied config
 # schema_only = capture schema then stream live changes, no initial data backfill.
 oracle_004_snapshot_mode = "schema_only"
 
+# ============================================================================
+# CONNECTOR 7 (NEW) — 005: unwrap only (no router), schema_only
+# ============================================================================
+enable_oracle_005_connector = true
+oracle_005_name_suffix      = "debezium-oracle-source-connector-005"
+
+oracle_005_topic_prefix  = "caltech_poc_oracle_005"
+oracle_005_history_topic = "schemahistory.oracle005" # distinct — no longer shares 004's topic
+oracle_005_snapshot_mode = "schema_only"
+
 # ---- used when oracle_connector_type = "confluent" --------------------------
 # Fully-qualified <PDB>.<SCHEMA>.<TABLE>, dots escaped as [.] — NOT the same
 # format as oracle_table_include_list above.
