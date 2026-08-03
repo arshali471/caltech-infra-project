@@ -235,9 +235,9 @@ oracle_002_topic_prefix  = "caltech_poc_oracle"
 oracle_002_router_topic  = "caltech_poc_oracle_topic002"
 oracle_002_history_topic = "schemahistory.oracle002" # distinct from oracle001
 
-# No table.include.list in the supplied config → captures the WHOLE EXETER schema.
+# No table.include.list in the supplied config → captures the whole schema below.
 # Set a comma-separated list here to restrict it.
-oracle_002_schema_include_list = "EXETER"
+oracle_002_schema_include_list = "SDF" # per updated config (was EXETER)
 oracle_002_table_include_list  = ""
 
 # ============================================================================
