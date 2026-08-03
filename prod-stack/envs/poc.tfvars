@@ -281,6 +281,30 @@ oracle_005_topic_prefix  = "caltech_poc_oracle_005"
 oracle_005_history_topic = "schemahistory.oracle005" # distinct — no longer shares 004's topic
 oracle_005_snapshot_mode = "schema_only"
 
+# ============================================================================
+# CONNECTOR 8 (NEW) — 006: unwrap only, regex table filter, LogMiner tuning
+# ============================================================================
+enable_oracle_006_connector = true
+oracle_006_name_suffix      = "debezium-oracle-source-connector-006"
+
+oracle_006_topic_prefix  = "caltech_poc_oracle_006"
+oracle_006_history_topic = "schemahistory.oracle006"
+oracle_006_snapshot_mode = "schema_only"
+
+oracle_006_schema_include_list    = "EXETER"
+oracle_006_table_include_list     = "EXETER\\.SSS_.*" # regex; \\. is a literal dot in HCL
+oracle_006_include_schema_changes = false
+
+# LogMiner tuning — VERIFY these against the source config; the property names
+# were transcribed from a photo. Property KEYS must be exact or Debezium ignores
+# them. (Debezium's real names are log.mining.archive.log.hours,
+# log.mining.batch.size.max, log.mining.strategy — adjust if the source differs.)
+oracle_006_extra_config = {
+  "archive.log.hours"        = "1"
+  "log.mining.window.max.ms" = "1"
+  "log.mining.strategy"      = "online_catalog"
+}
+
 # ---- used when oracle_connector_type = "confluent" --------------------------
 # Fully-qualified <PDB>.<SCHEMA>.<TABLE>, dots escaped as [.] — NOT the same
 # format as oracle_table_include_list above.

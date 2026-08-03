@@ -861,6 +861,62 @@ variable "oracle_005_snapshot_mode" {
   default     = "schema_only"
 }
 
+# ---- Oracle: 006 (eighth connector — regex table filter, LogMiner tuning) ----
+
+variable "enable_oracle_006_connector" {
+  description = "Create the eighth Oracle connector (006), independent of the others"
+  type        = bool
+  default     = false
+}
+
+variable "oracle_006_name_suffix" {
+  description = "Connector name suffix for the 006 connector"
+  type        = string
+  default     = "debezium-oracle-source-connector-006"
+}
+
+variable "oracle_006_topic_prefix" {
+  description = "Debezium topic.prefix for the 006 connector"
+  type        = string
+  default     = "caltech_poc_oracle_006"
+}
+
+variable "oracle_006_history_topic" {
+  description = "Schema-history topic for the 006 connector. Must differ from the other connectors' history topics"
+  type        = string
+  default     = "schemahistory.oracle006"
+}
+
+variable "oracle_006_snapshot_mode" {
+  description = "Snapshot mode for 006"
+  type        = string
+  default     = "schema_only"
+}
+
+variable "oracle_006_schema_include_list" {
+  description = "Schema(s) the 006 connector captures (e.g. EXETER)"
+  type        = string
+  default     = ""
+}
+
+variable "oracle_006_table_include_list" {
+  description = "table.include.list for 006. Accepts a regex; use \\\\. for a literal dot in HCL, e.g. \"EXETER\\\\.SSS_.*\""
+  type        = string
+  default     = ""
+}
+
+variable "oracle_006_include_schema_changes" {
+  description = "Whether the 006 connector emits schema-change events to a separate topic"
+  type        = bool
+  default     = false
+}
+
+variable "oracle_006_extra_config" {
+  description = "Extra raw connector properties for 006 (e.g. LogMiner tuning). Merged last, so these override any computed keys. Edit values here to match the source config exactly."
+  type        = map(string)
+  default     = {}
+}
+
 variable "oracle_slot_name" {
   description = "[custom] PostgreSQL replication slot name. Carried over from the app team's Postgres config; inert for an Oracle source"
   type        = string

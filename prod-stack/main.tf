@@ -866,6 +866,51 @@ locals {
       "schema.history.internal.store.only.captured.database.ddl" = tostring(var.oracle_store_only_captured_database_ddl)
     }
   )
+
+  # ---- 006 — eighth connector: unwrap only, regex table filter, LogMiner tune -
+  # Like 005 (unwrap only, schema_only) but restricts to EXETER.SSS_* tables via
+  # a regex table.include.list, and adds LogMiner tuning properties supplied via
+  # var.oracle_006_extra_config (a raw map so the exact keys/values live in
+  # tfvars and can be corrected without touching this file). The extra map is
+  # merged LAST, so anything in it overrides the keys below.
+  oracle_006_config = merge(
+    local.oracle_debezium_iam_auth,
+    local.oracle_debezium_pdb,
+    local.oracle_converters,
+    {
+      "connector.class"             = local.oracle_class
+      "tasks.max"                   = tostring(var.oracle_tasks_max)
+      "database.hostname"           = var.oracle_db_host
+      "database.port"               = tostring(var.oracle_db_port)
+      "database.user"               = var.oracle_db_user
+      "database.password"           = var.oracle_db_password
+      "database.dbname"             = var.oracle_db_name
+      "database.connection.adapter" = var.oracle_connection_adapter
+      "topic.prefix"                = var.oracle_006_topic_prefix
+      "schema.include.list"         = var.oracle_006_schema_include_list
+      "table.include.list"          = var.oracle_006_table_include_list
+      "snapshot.mode"               = var.oracle_006_snapshot_mode
+      "heartbeat.interval.ms"       = tostring(var.debezium_heartbeat_interval_ms)
+      "decimal.handling.mode"       = "double"
+      "time.precision.mode"         = "connect"
+      "max.queue.size"              = "200000"
+      "max.batch.size"              = "20000"
+      "poll.interval.ms"            = "100"
+      "include.schema.changes"      = tostring(var.oracle_006_include_schema_changes)
+
+      "transforms"                             = "unwrap"
+      "transforms.unwrap.type"                 = "io.debezium.transforms.ExtractNewRecordState"
+      "transforms.unwrap.drop.tombstones"      = "false"
+      "transforms.unwrap.delete.handling.mode" = "drop"
+      "transforms.unwrap.add.headers"          = "op,ts_ms,source.ts_ms,source.table"
+
+      "schema.history.internal.kafka.bootstrap.servers"          = module.msk.bootstrap_brokers_iam
+      "schema.history.internal.kafka.topic"                      = var.oracle_006_history_topic
+      "schema.history.internal.store.only.captured.tables.ddl"   = tostring(var.oracle_store_only_captured_tables_ddl)
+      "schema.history.internal.store.only.captured.database.ddl" = tostring(var.oracle_store_only_captured_database_ddl)
+    },
+    var.oracle_006_extra_config,
+  )
 }
 
 module "msk_connect_oracle" {
@@ -1093,6 +1138,39 @@ module "msk_connect_oracle_005" {
   converter_schemas_enabled = false
 
   connector_configuration = local.oracle_005_config
+
+  tags = var.tags
+}
+
+###############################################################################
+# Step 9i — Eighth Oracle connector: 006 (regex table filter, LogMiner tuning)
+# Independent module, created alongside connectors 1–7 without replacing them.
+# See local.oracle_006_config.
+###############################################################################
+
+module "msk_connect_oracle_006" {
+  source = "./modules/msk_connect"
+
+  count = var.enable_oracle_006_connector ? 1 : 0
+
+  name                  = local.name
+  connector_name_suffix = var.oracle_006_name_suffix
+  custom_plugin_name    = var.oracle_connect_custom_plugin_name
+  bootstrap_servers     = module.msk.bootstrap_brokers_iam
+  msk_connect_sg_id     = module.security_groups.msk_connect_sg_id
+  private_subnet_ids    = local.msk_connect_subnet_ids
+  msk_connect_role_arn  = module.iam.msk_connect_role_arn
+  kafkaconnect_version  = var.kafkaconnect_version
+
+  min_workers       = var.oracle_worker_count
+  max_workers       = var.oracle_worker_count
+  mcu_count         = var.msk_connect_mcu_count
+  scale_in_cpu_pct  = var.msk_connect_scale_in_cpu_pct
+  scale_out_cpu_pct = var.msk_connect_scale_out_cpu_pct
+
+  converter_schemas_enabled = false
+
+  connector_configuration = local.oracle_006_config
 
   tags = var.tags
 }
