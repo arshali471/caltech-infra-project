@@ -295,15 +295,14 @@ oracle_006_schema_include_list    = "EXETER"
 oracle_006_table_include_list     = "EXETER\\.SSS_.*" # regex; \\. is a literal dot in HCL
 oracle_006_include_schema_changes = false
 
-# LogMiner tuning — VERIFY these against the source config; the property names
-# were transcribed from a photo. Property KEYS must be exact or Debezium ignores
-# them. (Debezium's real names are log.mining.archive.log.hours,
-# log.mining.batch.size.max, log.mining.strategy — adjust if the source differs.)
-oracle_006_extra_config = {
-  "archive.log.hours"        = "1"
-  "log.mining.window.max.ms" = "1"
-  "log.mining.strategy"      = "online_catalog"
-}
+# LogMiner tuning REMOVED to match the working 005 connector. These were the
+# only connection-relevant difference from 005, and 006 was failing at connect
+# time ("Failed to resolve Oracle database version"). With this empty, 006's
+# connection config is identical to 005. Re-add specific keys ONE AT A TIME
+# (using Debezium's exact names: log.mining.archive.log.hours,
+# log.mining.batch.size.max, log.mining.strategy) once 006 is Running, to find
+# which property broke it.
+oracle_006_extra_config = {}
 
 # ---- used when oracle_connector_type = "confluent" --------------------------
 # Fully-qualified <PDB>.<SCHEMA>.<TABLE>, dots escaped as [.] — NOT the same
