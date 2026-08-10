@@ -911,6 +911,52 @@ locals {
     },
     var.oracle_006_extra_config,
   )
+
+  # ---- empty-schema — ninth connector: router, schema.include.list = SDF ------
+  # Same shape as 002 (router → single topic, whole "schema"). Named empty-schema
+  # because schema.include.list points at SDF, which captures nothing. Defaults
+  # reuse 002's router topic (caltech_poc_oracle_topic002) and history topic
+  # (schemahistory.oracle002) per the supplied config — inert only while SDF
+  # stays empty; give it distinct topics before pointing it at a real schema.
+  oracle_empty_schema_config = merge(
+    local.oracle_debezium_iam_auth,
+    local.oracle_debezium_pdb,
+    local.oracle_converters,
+    {
+      "connector.class"             = local.oracle_class
+      "tasks.max"                   = tostring(var.oracle_tasks_max)
+      "database.hostname"           = var.oracle_db_host
+      "database.port"               = tostring(var.oracle_db_port)
+      "database.user"               = var.oracle_db_user
+      "database.password"           = var.oracle_db_password
+      "database.dbname"             = var.oracle_db_name
+      "database.connection.adapter" = var.oracle_connection_adapter
+      "topic.prefix"                = var.oracle_empty_schema_topic_prefix
+      "schema.include.list"         = var.oracle_empty_schema_schema_include_list
+      "snapshot.mode"               = var.oracle_empty_schema_snapshot_mode
+      "heartbeat.interval.ms"       = tostring(var.debezium_heartbeat_interval_ms)
+      "decimal.handling.mode"       = "double"
+      "time.precision.mode"         = "connect"
+      "max.queue.size"              = "200000"
+      "max.batch.size"              = "20000"
+      "poll.interval.ms"            = "100"
+
+      "transforms"                               = "router,unwrap"
+      "transforms.router.type"                   = "io.debezium.transforms.ByLogicalTableRouter"
+      "transforms.router.topic.regex"            = ".*"
+      "transforms.router.topic.replacement"      = var.oracle_empty_schema_router_topic
+      "transforms.router.key.enforce.uniqueness" = "true"
+      "transforms.unwrap.type"                   = "io.debezium.transforms.ExtractNewRecordState"
+      "transforms.unwrap.drop.tombstones"        = "false"
+      "transforms.unwrap.delete.handling.mode"   = "drop"
+      "transforms.unwrap.add.headers"            = "op,ts_ms,source.ts_ms,source.table"
+
+      "schema.history.internal.kafka.bootstrap.servers"          = module.msk.bootstrap_brokers_iam
+      "schema.history.internal.kafka.topic"                      = var.oracle_empty_schema_history_topic
+      "schema.history.internal.store.only.captured.tables.ddl"   = tostring(var.oracle_store_only_captured_tables_ddl)
+      "schema.history.internal.store.only.captured.database.ddl" = tostring(var.oracle_store_only_captured_database_ddl)
+    }
+  )
 }
 
 module "msk_connect_oracle" {
@@ -1171,6 +1217,39 @@ module "msk_connect_oracle_006" {
   converter_schemas_enabled = false
 
   connector_configuration = local.oracle_006_config
+
+  tags = var.tags
+}
+
+###############################################################################
+# Step 9j — Ninth Oracle connector: empty-schema (router, schema SDF)
+# Independent module, created alongside connectors 1–8 without replacing them.
+# See local.oracle_empty_schema_config.
+###############################################################################
+
+module "msk_connect_oracle_empty_schema" {
+  source = "./modules/msk_connect"
+
+  count = var.enable_oracle_empty_schema_connector ? 1 : 0
+
+  name                  = local.name
+  connector_name_suffix = var.oracle_empty_schema_name_suffix
+  custom_plugin_name    = var.oracle_connect_custom_plugin_name
+  bootstrap_servers     = module.msk.bootstrap_brokers_iam
+  msk_connect_sg_id     = module.security_groups.msk_connect_sg_id
+  private_subnet_ids    = local.msk_connect_subnet_ids
+  msk_connect_role_arn  = module.iam.msk_connect_role_arn
+  kafkaconnect_version  = var.kafkaconnect_version
+
+  min_workers       = var.oracle_worker_count
+  max_workers       = var.oracle_worker_count
+  mcu_count         = var.msk_connect_mcu_count
+  scale_in_cpu_pct  = var.msk_connect_scale_in_cpu_pct
+  scale_out_cpu_pct = var.msk_connect_scale_out_cpu_pct
+
+  converter_schemas_enabled = false
+
+  connector_configuration = local.oracle_empty_schema_config
 
   tags = var.tags
 }

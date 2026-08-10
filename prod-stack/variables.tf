@@ -917,6 +917,50 @@ variable "oracle_006_extra_config" {
   default     = {}
 }
 
+# ---- Oracle: empty-schema (ninth connector — router, schema.include.list=SDF) -
+
+variable "enable_oracle_empty_schema_connector" {
+  description = "Create the empty-schema Oracle connector, independent of the others"
+  type        = bool
+  default     = false
+}
+
+variable "oracle_empty_schema_name_suffix" {
+  description = "Connector name suffix for the empty-schema connector"
+  type        = string
+  default     = "debezium-oracle-source-connector-empty-schema"
+}
+
+variable "oracle_empty_schema_topic_prefix" {
+  description = "Debezium topic.prefix for the empty-schema connector"
+  type        = string
+  default     = "caltech_poc_oracle"
+}
+
+variable "oracle_empty_schema_router_topic" {
+  description = "Router destination topic for the empty-schema connector. Shares 002's topic by default; change before pointing at a real schema"
+  type        = string
+  default     = "caltech_poc_oracle_topic002"
+}
+
+variable "oracle_empty_schema_history_topic" {
+  description = "Schema-history topic for the empty-schema connector. Shares 002's topic by default; MUST be made distinct before capturing a real schema"
+  type        = string
+  default     = "schemahistory.oracle002"
+}
+
+variable "oracle_empty_schema_schema_include_list" {
+  description = "Schema(s) the empty-schema connector captures (SDF = intentionally empty/non-existent)"
+  type        = string
+  default     = "SDF"
+}
+
+variable "oracle_empty_schema_snapshot_mode" {
+  description = "Snapshot mode for the empty-schema connector"
+  type        = string
+  default     = "initial"
+}
+
 variable "oracle_slot_name" {
   description = "[custom] PostgreSQL replication slot name. Carried over from the app team's Postgres config; inert for an Oracle source"
   type        = string

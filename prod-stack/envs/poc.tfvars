@@ -304,6 +304,22 @@ oracle_006_include_schema_changes = false
 # which property broke it.
 oracle_006_extra_config = {}
 
+# ============================================================================
+# CONNECTOR 9 (NEW) — empty-schema: router, schema.include.list = SDF
+# ============================================================================
+# Same config shape as 002. schema.include.list = SDF captures nothing (that's
+# the point — an empty-schema test). Router topic and history topic below reuse
+# 002's per the supplied config; harmless only while SDF stays empty. If you
+# point this at a real schema, give it a DISTINCT router + history topic first.
+enable_oracle_empty_schema_connector = true
+oracle_empty_schema_name_suffix      = "debezium-oracle-source-connector-empty-schema"
+
+oracle_empty_schema_topic_prefix        = "caltech_poc_oracle"
+oracle_empty_schema_router_topic        = "caltech_poc_oracle_topic002"
+oracle_empty_schema_history_topic       = "schemahistory.oracle002"
+oracle_empty_schema_schema_include_list = "SDF"
+oracle_empty_schema_snapshot_mode       = "initial"
+
 # ---- used when oracle_connector_type = "confluent" --------------------------
 # Fully-qualified <PDB>.<SCHEMA>.<TABLE>, dots escaped as [.] — NOT the same
 # format as oracle_table_include_list above.
