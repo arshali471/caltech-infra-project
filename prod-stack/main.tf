@@ -959,6 +959,18 @@ locals {
   )
 }
 
+/*
+  =========================================================================
+  COMMENTED OUT (2026-08-10): keeping only the 5 Postgres connectors
+  (module.msk_connect) and the empty-schema connector below. These Oracle
+  connectors (fix, schema-restricted, 001-006) are retained for reference,
+  not deployed. Their config locals above are left in place (unused, inert).
+  To restore any, uncomment its module block. NOTE: if these are still in
+  Terraform state, a full `terraform apply` will DESTROY them — remove them
+  from state or run a targeted destroy first if you want them gone cleanly.
+  =========================================================================
+*/
+/*
 module "msk_connect_oracle" {
   source = "./modules/msk_connect"
 
@@ -1220,6 +1232,8 @@ module "msk_connect_oracle_006" {
 
   tags = var.tags
 }
+*/
+# ===== end of commented-out Oracle connectors =====
 
 ###############################################################################
 # Step 9j — Ninth Oracle connector: empty-schema (router, schema SDF)
