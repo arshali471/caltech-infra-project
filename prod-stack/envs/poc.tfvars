@@ -320,6 +320,20 @@ oracle_empty_schema_history_topic       = "schemahistory.oracle002"
 oracle_empty_schema_schema_include_list = "SDF"
 oracle_empty_schema_snapshot_mode       = "initial"
 
+# ============================================================================
+# CONNECTOR — schema-alltables: router capture of ALL tables in EXETER
+# ============================================================================
+enable_oracle_alltables_connector = true
+oracle_alltables_name_suffix      = "debezium-oracle-source-connector-schema-alltables"
+
+oracle_alltables_topic_prefix  = "caltech_poc_oracle_topic_tablewildcard"
+oracle_alltables_router_topic  = "caltech_poc_oracle_topic_tablewildcard"
+oracle_alltables_history_topic = "schemahistory.oracle.wildcard"
+
+oracle_alltables_schema_include_list = "EXETER"
+oracle_alltables_table_include_list  = "EXETER\\..*" # regex: all tables in EXETER (\\. = literal dot)
+oracle_alltables_snapshot_mode       = "initial"
+
 # ---- used when oracle_connector_type = "confluent" --------------------------
 # Fully-qualified <PDB>.<SCHEMA>.<TABLE>, dots escaped as [.] — NOT the same
 # format as oracle_table_include_list above.

@@ -961,6 +961,56 @@ variable "oracle_empty_schema_snapshot_mode" {
   default     = "initial"
 }
 
+# ---- Oracle: schema-alltables (router capture of all tables in a schema) -----
+
+variable "enable_oracle_alltables_connector" {
+  description = "Create the schema-alltables Oracle connector, independent of the others"
+  type        = bool
+  default     = false
+}
+
+variable "oracle_alltables_name_suffix" {
+  description = "Connector name suffix for the schema-alltables connector"
+  type        = string
+  default     = "debezium-oracle-source-connector-schema-alltables"
+}
+
+variable "oracle_alltables_topic_prefix" {
+  description = "Debezium topic.prefix for the schema-alltables connector"
+  type        = string
+  default     = "caltech_poc_oracle_topic_tablewildcard"
+}
+
+variable "oracle_alltables_router_topic" {
+  description = "Router destination topic for the schema-alltables connector"
+  type        = string
+  default     = "caltech_poc_oracle_topic_tablewildcard"
+}
+
+variable "oracle_alltables_history_topic" {
+  description = "Schema-history topic for the schema-alltables connector. Must differ from the other connectors' history topics"
+  type        = string
+  default     = "schemahistory.oracle.wildcard"
+}
+
+variable "oracle_alltables_schema_include_list" {
+  description = "Schema(s) the schema-alltables connector captures (e.g. EXETER)"
+  type        = string
+  default     = ""
+}
+
+variable "oracle_alltables_table_include_list" {
+  description = "table.include.list regex for schema-alltables. Use \\\\. for a literal dot in HCL, e.g. \"EXETER\\\\..*\" (all tables in EXETER)"
+  type        = string
+  default     = ""
+}
+
+variable "oracle_alltables_snapshot_mode" {
+  description = "Snapshot mode for the schema-alltables connector"
+  type        = string
+  default     = "initial"
+}
+
 variable "oracle_slot_name" {
   description = "[custom] PostgreSQL replication slot name. Carried over from the app team's Postgres config; inert for an Oracle source"
   type        = string
